@@ -5,9 +5,16 @@ edition = "2024"
 
 [dependencies]
 object_store = { version = "0.12.4", features = ["aws", "azure"] }
-# Cloudian is handled by the 'aws' S3 feature, but requires a custom endpoint.
 tokio = { version = "1", features = ["full"] }
 dotenvy = "0.15"
+serde = "1"
+serde_json = "1.0"
 bytes = "1"
+bincode = "1"
 url = "2"
 anyhow = "1.0.100"
+kube = { version = "1.1.0", default-features = true, features = [
+    "derive",
+    "runtime",
+] } # Library for talking to Kubernetes API
+k8s-openapi = { version = "0.25.0", default-features = false, features = ["v1_33"] }
