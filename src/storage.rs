@@ -15,11 +15,11 @@ use std::env;
 /// and requires the container name.
 pub fn initialize_azure_store(container_name: &str) -> Result<Arc<dyn ObjectStore>> {
     // Note: We use env::var() here. The caller (main) is responsible for loading the .env file.
-    let account = env::var("AZURE_STORAGE_ACCOUNT")
-        .map_err(|_| anyhow!("AZURE_STORAGE_ACCOUNT not found in environment"))?;
+    let account = env::var("OBJECT_STORAGE_ACCOUNT")
+        .map_err(|_| anyhow!("OBJECT_STORAGE_ACCOUNT not found in environment"))?;
     
-    let access_key = env::var("AZURE_STORAGE_ACCESS_KEY")
-        .map_err(|_| anyhow!("AZURE_STORAGE_ACCESS_KEY not found in environment"))?;
+    let access_key = env::var("OBJECT_STORAGE_SECRET")
+        .map_err(|_| anyhow!("OBJECT_STORAGE_SECRET not found in environment"))?;
 
     println!("Attempting to connect to Azure Blob Storage...");
     
@@ -37,17 +37,17 @@ pub fn initialize_azure_store(container_name: &str) -> Result<Arc<dyn ObjectStor
 /// 
 /// It can connect to:
 /// 1. AWS S3 (if endpoint_url is None).
-/// 2. S3-compatible vendors like Cloudian (if endpoint_url is Some).
+/// 2. S3-compatible vendors like Cloudian and MinIO (if endpoint_url is Some).
 pub fn initialize_s3_store(
     bucket_name: &str,
     endpoint_url: Option<&str>,
 ) -> Result<Arc<dyn ObjectStore>> {
     // Note: We use env::var() for access keys, which is standard for both AWS and generic S3.
-    let access_key = env::var("AWS_ACCESS_KEY_ID")
-        .map_err(|_| anyhow!("AWS_ACCESS_KEY_ID (or equivalent S3 key) not found"))?;
+    let access_key = env::var("OBJECT_STORAGE_ACCOUNT")
+        .map_err(|_| anyhow!("OBJECT_STORAGE_ACCOUNT (or equivalent S3 key) not found"))?;
     
-    let secret_key = env::var("AWS_SECRET_ACCESS_KEY")
-        .map_err(|_| anyhow!("AWS_SECRET_ACCESS_KEY (or equivalent S3 secret) not found"))?;
+    let secret_key = env::var("OBJECT_STORAGE_SECRET")
+        .map_err(|_| anyhow!("OBJECT_STORAGE_SECRET (or equivalent S3 secret) not found"))?;
 
     println!("Attempting to connect to S3-compatible Storage...");
     

@@ -31,17 +31,17 @@ async fn main() -> Result<()> {
     // 4. Initialize the Object Store dynamically.
     let store = match provider.as_str() {
         "azure" => {
-            let container_name = env::var("AZURE_STORAGE_CONTAINER")
-                .map_err(|_| anyhow::anyhow!("AZURE_STORAGE_CONTAINER must be set for Azure"))?;
+            let container_name = env::var("OBJECT_STORAGE_BUCKET")
+                .map_err(|_| anyhow::anyhow!("OBJECT_STORAGE_BUCKET must be set for Azure"))?;
             
             storage::initialize_azure_store(&container_name)?
         }
         "s3" => {
             // Note: For S3, the bucket name is required. We'll use AWS_BUCKET_NAME convention.
-            let bucket_name = env::var("AWS_BUCKET_NAME")
-                .map_err(|_| anyhow::anyhow!("AWS_BUCKET_NAME must be set for S3"))?;
+            let bucket_name = env::var("OBJECT_STORAGE_BUCKET")
+                .map_err(|_| anyhow::anyhow!("OBJECT_STORAGE_BUCKET must be set for S3"))?;
             
-            // Allow an optional custom endpoint for S3-compatible systems (like Cloudian)
+            // Allow an optional custom endpoint for S3-compatible systems (like Cloudian or MinIO)
             let endpoint = env::var("S3_ENDPOINT_URL").ok(); 
             
             storage::initialize_s3_store(&bucket_name, endpoint.as_deref())?
