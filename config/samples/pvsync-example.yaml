@@ -1,0 +1,14 @@
+apiVersion: storage.cndev.nl/v1alpha1
+kind: PersistentVolumeSync
+metadata:
+  name: example-pvsync
+  labels:
+    app.kubernetes.io/name: persistentvolumesync
+    app.kubernetes.io/part-of: volumesync-operator
+  annotations:
+    description: "Tracks persistent volumes on protected cluster"
+spec:
+  clusterNameKey: cluster.x-k8s.io/cluster-name # retreiving the cluster name by annotation key is required
+  mode: Protected # or Recovery
+  cloudProvider: azure # or s3
+  retention: 14 # retention in days

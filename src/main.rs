@@ -1,13 +1,13 @@
-use k8sfsr::crd::VolumeTracker;
-use k8sfsr::status;
-use k8sfsr::storage;
-use k8sfsr::storage::StorageBundle;
-use k8sfsr::utils::*;
+use pvsync::crd::PersistentVolumeSync;
+use pvsync::status;
+use pvsync::storage;
+use pvsync::storage::StorageBundle;
+use pvsync::utils::*;
 
 use chrono::Utc;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::PersistentVolume;
-use k8sfsr::utils;
+use pvsync::utils;
 use kube::Config as KubeConfig;
 use kube::ResourceExt;
 use kube::runtime::watcher::Config;
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Error> {
     let client: Client = Client::try_from(config)?;
 
     // Preparation of resources used by the `kube_runtime::Controller`
-    let crd_api: Api<VolumeTracker> = Api::all(client.clone());
+    let crd_api: Api<PersistentVolumeSync> = Api::all(client.clone());
     let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
 
     let (tx, rx) = mpsc::channel::<()>(16); // channel to trigger global reconciles
@@ -59,9 +59,9 @@ async fn main() -> Result<(), Error> {
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = VolumeTracker`, as this controller owns the `VolumeTracker` resource,
-    // - `kube::runtime::watcher::Config` can be adjusted for precise filtering of `VolumeTracker` resources before the actual reconciliation, e.g. by label,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `VolumeTracker` kind is created/updated/deleted,
+    // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
+    // - `kube::runtime::watcher::Config` can be adjusted for precise filtering of `PersistentVolumeSync` resources before the actual reconciliation, e.g. by label,
+    // - `reconcile` function with reconciliation logic to be called each time a resource of `PersistentVolumeSync` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(crd_api.clone(), Config::default())
         .shutdown_on_signal()
@@ -82,34 +82,18 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn reconcile(cr: Arc<VolumeTracker>, context: Arc<ContextData>) -> Result<Action, Error> {
+async fn reconcile(cr: Arc<PersistentVolumeSync>, context: Arc<ContextData>) -> Result<Action, Error> {
     let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
 
-    // The resource of `VolumeTracker` kind is required to have a namespace set. However, it is not guaranteed
-    // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
-    // is optional and Rust forces the programmer to check for it's existence first.
-    let namespace: String = match cr.namespace() {
-        None => {
-            // If there is no namespace to deploy to defined, reconciliation ends with an error immediately.
-            return Err(Error::UserInputError(
-                "Expected VolumeTracker resource to be namespaced. Can't deploy to an unknown namespace."
-                    .to_owned(),
-            ));
-        }
-        // If namespace is known, proceed. In a more advanced version of the operator, perhaps
-        // the namespace could be checked for existence first.
-        Some(namespace) => namespace,
-    };
-
-    let name = cr.name_any(); // Name of the VolumeTracker resource is used to name the subresources as well.
-    let tracker = cr.as_ref();
+    let name = cr.name_any(); // Name of the PersistentVolumeSync resource is used to name the subresources as well.
+    let pvsync = cr.as_ref();
 
     let now = Utc::now();
     //let tf = now.format("%Y-%m-%d-%H%M%S");
     let tf = now.timestamp();
 
     let cluster_name =
-        utils::get_most_common_cluster_name(client.clone(), &tracker.spec.cluster_name_key).await?;
+        utils::get_most_common_cluster_name(client.clone(), &pvsync.spec.cluster_name_key).await?;
 
     // populate bundle
     let storage_bundle = storage::populate_storage_bundle(client.clone()).await?;
@@ -118,13 +102,16 @@ async fn reconcile(cr: Arc<VolumeTracker>, context: Arc<ContextData>) -> Result<
     object_storage_logic(tf, &cluster_name, storage_bundle).await?;
 
     // cleanup old log folders based on the given retention in days in the CR spec.
-
-    status::print(client.clone(), &name, &namespace).await?;
+    // TODO()
+    
+    //update status
+    status::patch(client.clone(), &name, true).await?;
+    status::print(client.clone(), &name).await?;
 
     Ok(Action::requeue(Duration::from_secs(32000)))
 }
 
-fn on_error(cr: Arc<VolumeTracker>, error: &Error, context: Arc<ContextData>) -> Action {
+fn on_error(cr: Arc<PersistentVolumeSync>, error: &Error, context: Arc<ContextData>) -> Action {
     let client = context.client.clone();
     let name = cr.name_any();
     let namespace = cr.namespace().unwrap_or_else(|| "default".to_string());
@@ -138,7 +125,7 @@ fn on_error(cr: Arc<VolumeTracker>, error: &Error, context: Arc<ContextData>) ->
 
     // Spawn async patch inside sync function
     tokio::spawn(async move {
-        if let Err(e) = status::patch(client, &name, &namespace, false).await {
+        if let Err(e) = status::patch(client, &name, false).await {
             error!("Failed to update status: {:?}", e);
         }
     });
@@ -164,8 +151,8 @@ pub enum Error {
         source: kube_runtime::watcher::Error,
     },
 
-    /// Error in user input or VolumeTracker resource definition, typically missing fields.
-    #[error("Invalid VolumeTracker CRD: {0}")]
+    /// Error in user input or PersistentVolumeSync resource definition, typically missing fields.
+    #[error("Invalid PersistentVolumeSync CRD: {0}")]
     UserInputError(String),
 
     /// Catch-all for any other error.

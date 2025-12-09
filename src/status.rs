@@ -3,39 +3,37 @@ use kube::{Api, Client, Error, ResourceExt};
 use serde_json::{Value, json};
 use tracing::*;
 
-use crate::crd::{VolumeTracker, VolumeTrackerStatus};
+use crate::crd::{PersistentVolumeSync, PersistentVolumeSyncStatus};
 
-/// Update VolumeTracker status
+/// Update PersistentVolumeSync status
 pub async fn patch(
     client: Client,
     name: &str,
-    namespace: &str,
     success: bool,
-) -> Result<VolumeTracker, Error> {
-    let api: Api<VolumeTracker> = Api::namespaced(client, namespace);
+) -> Result<PersistentVolumeSync, Error> {
+    let api: Api<PersistentVolumeSync> = Api::all(client);
 
     let data: Value = json!({
-        "status": VolumeTrackerStatus { succeeded: success },
+        "status": PersistentVolumeSyncStatus { succeeded: success },
     });
 
     api.patch_status(name, &PatchParams::default(), &Patch::Merge(&data))
         .await
 }
 
-/// Print VolumeTracker status
-pub async fn print(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
-    let api: Api<VolumeTracker> = Api::namespaced(client, namespace);
+/// Print PersistentVolumeSync status
+pub async fn print(client: Client, name: &str) -> Result<(), Error> {
+    let api: Api<PersistentVolumeSync> = Api::all(client);
 
     let cdb = api.get_status(name).await?;
 
     info!(
-        "Got status succeeded {:?} for custom resource {} in namespace {}",
+        "Got status succeeded {:?} for custom resource {}",
         cdb.clone()
             .status
-            .unwrap_or(VolumeTrackerStatus { succeeded: false })
+            .unwrap_or(PersistentVolumeSyncStatus { succeeded: false })
             .succeeded,
-        cdb.name_any(),
-        namespace
+        cdb.name_any()
     );
 
     Ok(())

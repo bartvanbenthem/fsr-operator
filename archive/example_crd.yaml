@@ -1,0 +1,67 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: persistentvolumesyncs.storage.example.com
+spec:
+  group: storage.example.com
+  scope: Cluster
+  names:
+    plural: persistentvolumesyncs
+    singular: persistentvolumesync
+    kind: PersistentVolumeSync
+    shortNames:
+      - pvsync
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum:
+                    - Protected
+                    - Recovery
+                backend:
+                  type: object
+                  properties:
+                    provider:
+                      type: string
+                      description: "e.g. s3, gcs, azure"
+                    bucket:
+                      type: string
+                    prefix:
+                      type: string
+                selector:
+                  type: object
+                  nullable: true
+                  properties:
+                    storageClass:
+                      type: string
+                    annotations:
+                      type: object
+                      additionalProperties:
+                        type: string
+                schedule:
+                  type: string
+                  nullable: true
+                  description: "Optional cron schedule for periodic sync"
+            status:
+              type: object
+              properties:
+                lastSyncTime:
+                  type: string
+                  format: date-time
+                observedGeneration:
+                  type: integer
+                phase:
+                  type: string
+                  enum:
+                    - Idle
+                    - Syncing
+                    - Error

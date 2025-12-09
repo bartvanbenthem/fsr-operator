@@ -1,0 +1,18 @@
+apiVersion: storage.example.com/v1alpha1
+kind: PersistentVolumeSync
+metadata:
+  name: nfs-replication
+spec:
+  mode: Protected | Recovery
+  backend:
+    provider: s3
+    bucket: my-nfs-pv-backups
+    prefix: pv-metadata
+  selector:
+    storageClass: nfs-storage       # optional filter
+    annotations:                    # optional filter
+      mirror: "true"
+status:
+  lastSyncTime: "2025-01-20T14:00:00Z"
+  observedGeneration: 3
+  phase: Idle | Syncing | Error

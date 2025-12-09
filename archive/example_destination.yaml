@@ -1,0 +1,10 @@
+apiVersion: storage.example.com/v1alpha1
+kind: PersistentVolumeSync
+metadata:
+  name: recovery-pv-import
+spec:
+  mode: Recovery
+  backend:
+    provider: s3
+    bucket: dr-pv-backups
+    prefix: protected

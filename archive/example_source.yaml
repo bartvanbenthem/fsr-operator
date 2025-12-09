@@ -1,0 +1,12 @@
+apiVersion: storage.example.com/v1alpha1
+kind: PersistentVolumeSync
+metadata:
+  name: protected-pv-export
+spec:
+  mode: Protected
+  backend:
+    provider: s3
+    bucket: dr-pv-backups
+    prefix: protected
+  selector:
+    storageClass: nfs-client
