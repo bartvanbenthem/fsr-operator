@@ -1,98 +1,111 @@
-use k8s_openapi::api::core::v1::{
-    PersistentVolume, PersistentVolumeClaim, PersistentVolumeSpec, PersistentVolumeClaimSpec,
-    VolumeResourceRequirements,
-};
-use k8s_openapi::api::storage::v1::StorageClass;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
-use serde::{Deserialize, Serialize};
+use crate::utils;
+use anyhow::{Result, Context};
+use k8s_openapi::Metadata;
+use kube::Resource;
+use kube::api::ObjectList;
+use kube::core::ObjectMeta;
+use kube::{Api, Client, api::ListParams};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use std::fmt::Debug;
+use std::path::Path;
+use tokio::fs;
+use tokio_stream::wrappers::ReadDirStream;
+use tokio_stream::StreamExt;
+use tracing::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct StorageBundle {
-    pub storage_classes: Vec<StorageClass>,
-    pub persistent_volumes: Vec<PersistentVolume>,
-    pub persistent_volume_claims: Vec<PersistentVolumeClaim>,
+
+// Generic function to read a specific resource type and return a list
+pub async fn get_resource_list<T>(client: Client) -> Result<ObjectList<T>, anyhow::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Send
+        + Sync
+        + 'static,
+{
+    // Access the Resource <T> API (it's cluster-scoped)
+    let r: Api<T> = Api::all(client);
+
+    // List Resource <T>
+    let lp = ListParams::default();
+    let r_list = r.list(&lp).await?;
+
+    Ok(r_list)
 }
 
-impl StorageBundle {
-    pub fn new() -> Self {
-        Self {
-            storage_classes: Vec::new(),
-            persistent_volumes: Vec::new(),
-            persistent_volume_claims: Vec::new(),
+// Generic function to fetch and write a resource in json format to disk
+pub async fn fetch_and_write_resource<T>(
+    client: Client,
+    mount_path: &str,
+    cluster_name: &str,
+    file_name: &str,
+    tf: &i64,
+) -> Result<(), anyhow::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Serialize
+        + Send
+        + Sync
+        + 'static,
+{
+    let file_path = Path::new(mount_path)
+        .join(cluster_name)
+        .join(tf.to_string())
+        .join(file_name);
+
+    let file_str = file_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path"))?;
+
+    let resource_list: ObjectList<T> = get_resource_list(client).await?;
+    utils::write_json_to_file(&resource_list.items, file_str).await
+}
+
+// Generic function to fetch and write a resource in json format to disk
+pub async fn cleanup_resource_logs(
+    mount_path: &str,
+    cluster_name: &str,
+    retention: &u16,
+    tf: &i64,
+) -> Result<(), anyhow::Error>
+{
+    let file_path = Path::new(mount_path).join(cluster_name);
+    let retention_secs = (*retention as i64) * 24 * 60 * 60;
+
+    let read_dir = fs::read_dir(&file_path)
+        .await
+        .context(format!("Failed to read directory {:?}", file_path))?;
+
+    let mut entries = ReadDirStream::new(read_dir);
+
+    while let Some(entry_result) = entries.next().await {
+        let entry = entry_result?;
+        let path = entry.path();
+
+        if let Some(folder_name) = path.file_name().and_then(|s| s.to_str()) {
+            match folder_name.parse::<i64>() {
+                Ok(folder_timestamp) => {
+                    let age = tf - folder_timestamp;
+                    if age > retention_secs {
+                        info!("Removing old folder: {:?}", path);
+                        fs::remove_dir_all(&path).await
+                            .context(format!("Failed to delete folder {:?}", path))?;
+                    }
+                }
+                Err(_) => {
+                    error!("Skipping non-numeric folder: {:?}", folder_name);
+                }
+            }
         }
     }
 
-    pub fn add_storage_class(&mut self, sc: StorageClass) {
-        self.storage_classes.push(sc);
-    }
-
-    pub fn add_persistent_volume(&mut self, pv: PersistentVolume) {
-        self.persistent_volumes.push(pv);
-    }
-
-    pub fn add_persistent_volume_claim(&mut self, pvc: PersistentVolumeClaim) {
-        self.persistent_volume_claims.push(pvc);
-    }
-
-    pub fn dummy() -> Self {
-        let mut bundle = Self::new();
-
-        // -------- StorageClass --------
-        let sc = StorageClass {
-            metadata: ObjectMeta {
-                name: Some("fast-storage".into()),
-                ..Default::default()
-            },
-            provisioner: "example.com/dummy".into(),
-            ..Default::default()
-        };
-        bundle.add_storage_class(sc);
-
-        // -------- PersistentVolume --------
-        let pv = PersistentVolume {
-            metadata: ObjectMeta {
-                name: Some("pv-fast-001".into()),
-                ..Default::default()
-            },
-            spec: Some(PersistentVolumeSpec {
-                storage_class_name: Some("fast-storage".into()),
-                capacity: Some(
-                    [("storage".into(), Quantity("10Gi".into()))]
-                        .into_iter()
-                        .collect(),
-                ),
-                access_modes: Some(vec!["ReadWriteOnce".into()]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        bundle.add_persistent_volume(pv);
-
-        // -------- PersistentVolumeClaim --------
-        let pvc = PersistentVolumeClaim {
-            metadata: ObjectMeta {
-                name: Some("pvc-fast-claim".into()),
-                namespace: Some("default".into()),
-                ..Default::default()
-            },
-            spec: Some(PersistentVolumeClaimSpec {
-                storage_class_name: Some("fast-storage".into()),
-                access_modes: Some(vec!["ReadWriteOnce".into()]),
-                resources: Some(VolumeResourceRequirements {
-                    requests: Some(
-                        [("storage".into(), Quantity("10Gi".into()))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        bundle.add_persistent_volume_claim(pvc);
-
-        bundle
-    }
+    Ok(())
 }
