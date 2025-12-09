@@ -18,15 +18,18 @@ use tracing::*;
 use std::fmt::Debug;
 
 use futures::TryStreamExt;
+use kube::ResourceExt;
+use kube::api::ObjectMeta;
 use kube_runtime::WatchStreamExt;
 use kube_runtime::watcher;
-use tokio::task;
-use kube::api::ObjectMeta;
-use tokio::sync::mpsc;
 use kube_runtime::watcher::Config;
-use kube::ResourceExt;
+use tokio::sync::mpsc;
+use tokio::task;
 
-pub async fn start_resource_watcher<T>(client: Client, tx: mpsc::Sender<()>) -> Result<(), anyhow::Error> 
+pub async fn start_resource_watcher<T>(
+    client: Client,
+    tx: mpsc::Sender<()>,
+) -> Result<(), anyhow::Error>
 where
     T: Clone
         + Debug
@@ -62,10 +65,10 @@ where
 }
 
 pub async fn start_resource_watcher_label<T>(
-    client: Client, 
+    client: Client,
     tx: mpsc::Sender<()>,
-    label_selector: &str // Add an argument for the selector
-) -> Result<(), anyhow::Error> 
+    label_selector: &str, // Add an argument for the selector
+) -> Result<(), anyhow::Error>
 where
     T: Clone
         + Debug

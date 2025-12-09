@@ -1,5 +1,5 @@
 use crate::utils;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use k8s_openapi::Metadata;
 use kube::Resource;
 use kube::api::ObjectList;
@@ -10,10 +10,9 @@ use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::path::Path;
 use tokio::fs;
-use tokio_stream::wrappers::ReadDirStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReadDirStream;
 use tracing::*;
-
 
 // Generic function to read a specific resource type and return a list
 pub async fn get_resource_list<T>(client: Client) -> Result<ObjectList<T>, anyhow::Error>
@@ -37,8 +36,8 @@ where
     Ok(r_list)
 }
 
-// Generic function to fetch and write a resource in json format to disk
-pub async fn fetch_and_write_resource<T>(
+// Generic function to fetch and write a list of resources in json format to disk
+pub async fn fetch_and_write_resources_to_file<T>(
     client: Client,
     mount_path: &str,
     cluster_name: &str,
@@ -75,8 +74,7 @@ pub async fn cleanup_resource_logs(
     cluster_name: &str,
     retention: &u16,
     tf: &i64,
-) -> Result<(), anyhow::Error>
-{
+) -> Result<(), anyhow::Error> {
     let file_path = Path::new(mount_path).join(cluster_name);
     let retention_secs = (*retention as i64) * 24 * 60 * 60;
 
@@ -96,7 +94,8 @@ pub async fn cleanup_resource_logs(
                     let age = tf - folder_timestamp;
                     if age > retention_secs {
                         info!("Removing old folder: {:?}", path);
-                        fs::remove_dir_all(&path).await
+                        fs::remove_dir_all(&path)
+                            .await
                             .context(format!("Failed to delete folder {:?}", path))?;
                     }
                 }

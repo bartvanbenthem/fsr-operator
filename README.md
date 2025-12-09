@@ -63,6 +63,6 @@ metadata:
     description: "Tracks persistent volume usage and logs it"
 spec:
   clusterNameKey: cluster.x-k8s.io/cluster-name # retreiving the cluster name by annotation key is required
-  mountPath: k8sfsrlog # needs to corresponed with the mountPath given in the opertor spec/chart
+  cloudProvider: azure # or s3
   retention: 14 # retention in days
 ```

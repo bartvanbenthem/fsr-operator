@@ -20,8 +20,8 @@ pub struct TrackerSpec {
     #[serde(rename = "clusterNameKey")]
     pub cluster_name_key: String,
     #[garde(skip)]
-    #[serde(rename = "mountPath")]
-    pub mount_path: String,
+    #[serde(rename = "cloudProvider")]
+    pub cloud_provider: String,
     #[garde(skip)]
     #[serde(rename = "retention")]
     pub retention: u16,

@@ -1,25 +1,25 @@
 use k8sfsr::crd::VolumeTracker;
 use k8sfsr::status;
+use k8sfsr::storage;
 use k8sfsr::storage::StorageBundle;
 use k8sfsr::utils::*;
-use k8sfsr::storage;
 
 use chrono::Utc;
 use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::{PersistentVolume};
+use k8s_openapi::api::core::v1::PersistentVolume;
+use k8sfsr::utils;
 use kube::Config as KubeConfig;
 use kube::ResourceExt;
 use kube::runtime::watcher::Config;
 use kube::{Api, client::Client, runtime::Controller, runtime::controller::Action};
-use k8sfsr::utils;
 use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::*;
 
+use anyhow::anyhow;
+use std::env;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use anyhow::{anyhow};
-use std::env;
 
 /// Context injected with each `reconcile` and `on_error` method invocation.
 struct ContextData {
@@ -51,7 +51,6 @@ async fn main() -> Result<(), Error> {
     // Preparation of resources used by the `kube_runtime::Controller`
     let crd_api: Api<VolumeTracker> = Api::all(client.clone());
     let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
-
 
     let (tx, rx) = mpsc::channel::<()>(16); // channel to trigger global reconciles
     let signal_stream = ReceiverStream::new(rx); // converts mpsc into a stream
@@ -105,14 +104,12 @@ async fn reconcile(cr: Arc<VolumeTracker>, context: Arc<ContextData>) -> Result<
     let name = cr.name_any(); // Name of the VolumeTracker resource is used to name the subresources as well.
     let tracker = cr.as_ref();
 
-
     let now = Utc::now();
     //let tf = now.format("%Y-%m-%d-%H%M%S");
     let tf = now.timestamp();
 
     let cluster_name =
         utils::get_most_common_cluster_name(client.clone(), &tracker.spec.cluster_name_key).await?;
-
 
     // populate bundle
     let storage_bundle = storage::populate_storage_bundle(client.clone()).await?;
@@ -178,8 +175,11 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-
-async fn object_storage_logic(timestamp: i64, cluster_name: &str, storage_bundle: StorageBundle) -> anyhow::Result<()> {
+async fn object_storage_logic(
+    timestamp: i64,
+    cluster_name: &str,
+    storage_bundle: StorageBundle,
+) -> anyhow::Result<()> {
     // 1. Load the environment file once at startup.
     dotenvy::dotenv().ok();
 

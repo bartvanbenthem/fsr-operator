@@ -21,12 +21,13 @@ spec:
               properties:
                 clusterNameKey:
                   type: string
-                mountPath:
+                cloudProvider:
                   type: string
                 retention:
                   type: integer
               required:
                 - clusterNameKey
+                - cloudProvider
             status:
               type: object
               properties:
