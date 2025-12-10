@@ -6,7 +6,6 @@ use pvsync::storage::StorageBundle;
 use pvsync::utils;
 
 use anyhow::anyhow;
-use std::env;
 use chrono::Utc;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::PersistentVolume;
@@ -15,6 +14,7 @@ use kube::ResourceExt;
 use kube::api::ListParams;
 use kube::runtime::watcher::Config;
 use kube::{Api, client::Client, runtime::Controller, runtime::controller::Action};
+use std::env;
 use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::*;
@@ -55,17 +55,19 @@ async fn main() -> Result<(), Error> {
     let crd_api: Api<PersistentVolumeSync> = Api::all(client.clone());
     let cr_list = crd_api.list(&ListParams::default()).await?;
 
+    // Get the selected mode from the Volume Sync CR
     let mut mode = SyncMode::default();
     for cr in cr_list {
         mode = cr.spec.mode;
     }
 
     if mode == SyncMode::Protected {
-        let (tx, rx) = mpsc::channel::<()>(16); // channel to trigger global reconciles
-        let signal_stream = ReceiverStream::new(rx); // converts mpsc into a stream
+        // channel to trigger global reconciles
+        let (tx, rx) = mpsc::channel::<()>(16);
+        // converts mpsc into a stream
+        let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
         utils::start_resource_watcher::<PersistentVolume>(client.clone(), tx).await?;
-
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
         // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
@@ -88,10 +90,41 @@ async fn main() -> Result<(), Error> {
             })
             .await;
     } else if mode == SyncMode::Recovery {
-        println!("Recovery");
+        // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
+        // It requires the following information:
+        // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
+        // - `kube::runtime::watcher::Config` can be adjusted for precise filtering of `PersistentVolumeSync` resources before the actual reconciliation, e.g. by label,
+        // - `reconcile` function with reconciliation logic to be called each time a resource of `PersistentVolumeSync` kind is created/updated/deleted,
+        // - `on_error` function to call whenever reconciliation fails.
+        Controller::new(crd_api.clone(), Config::default())
+            .shutdown_on_signal()
+            .run(reconcile_recovery, on_error, context)
+            .for_each(|reconciliation_result| async move {
+                match reconciliation_result {
+                    Ok(custom_resource) => {
+                        info!("Reconciliation successful. Resource: {:?}", custom_resource);
+                    }
+                    Err(reconciliation_err) => {
+                        warn!("Reconciliation error: {:?}", reconciliation_err)
+                    }
+                }
+            })
+            .await;
     }
 
     Ok(())
+}
+
+async fn reconcile_recovery(
+    cr: Arc<PersistentVolumeSync>,
+    context: Arc<ContextData>,
+) -> Result<Action, Error> {
+    let _ = cr;
+    let _ = context;
+
+    info!("Reconcile Recovery");
+
+    Ok(Action::requeue(Duration::from_secs(100)))
 }
 
 async fn reconcile_protected(

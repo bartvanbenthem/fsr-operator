@@ -49,15 +49,15 @@ kubectl apply -f ./config/crd/pvsync.storage.cndev.nl.yaml
 
 ## Deploy Operator
 ```bash
-helm install pvsync ./config/operator/chart --create-namespace --namespace dr-operator
-# helm -n dr-operator uninstall pvsync
+helm install pvsync ./config/operator/chart --create-namespace --namespace pvsync-operator
+# helm -n pvsync-operator uninstall pvsync
 ```
 
-## Sample tracker resource
+## Sample volume sync resource
 ```bash
-kubectl -n dr-operator apply -f ./config/samples/pvsync-example.yaml
-kubectl -n dr-operator describe persistentvolumesyncs.storage.cndev.nl example-pvsync
-# kubectl -n dr-operator  delete -f ./config/samples/pvsync-example.yaml
+kubectl apply -f ./config/samples/pvsync-example.yaml
+kubectl describe persistentvolumesyncs.storage.cndev.nl example-pvsync
+# kubectl delete -f ./config/samples/pvsync-example.yaml
 ```
 
 ## Test Watchers & Reconciler on Create Persistant Volumes

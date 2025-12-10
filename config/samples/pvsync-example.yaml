@@ -9,6 +9,6 @@ metadata:
     description: "Tracks persistent volumes on protected cluster"
 spec:
   clusterNameKey: cluster.x-k8s.io/cluster-name # retreiving the cluster name by annotation key is required
-  mode: Protected # or Recovery
-  cloudProvider: azure # or s3
+  mode: Protected # Protected | Recovery
+  cloudProvider: azure # azure | s3
   retention: 14 # retention in days
