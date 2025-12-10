@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use std::fmt::Debug;
 
 /// Create an API object for either cluster-scoped or namespaced CRDs.
-fn generic_api<T>(client: Client, namespace: Option<&str>) -> Api<T>
+fn crd_scope<T>(client: Client, namespace: Option<&str>) -> Api<T>
 where
     T: Resource,
 {
@@ -30,7 +30,7 @@ where
     T::DynamicType: Default,
     T::Status: Serialize + Clone + Debug,
 {
-    let api = generic_api::<T>(client, namespace);
+    let api = crd_scope::<T>(client, namespace);
 
     let data: Value = json!({ "status": status });
 
@@ -49,7 +49,7 @@ where
     T::DynamicType: Default,
     T::Status: Default + Clone + Serialize + DeserializeOwned + Debug,
 {
-    let api = generic_api::<T>(client, namespace);
+    let api = crd_scope::<T>(client, namespace);
 
     let obj = api.get_status(name).await?;
 
