@@ -1,4 +1,3 @@
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use pvsync::crd::PersistentVolumeSync;
 use pvsync::crd::PersistentVolumeSyncStatus;
 use pvsync::crd::SyncMode;
