@@ -39,6 +39,8 @@ impl ContextData {
     }
 }
 
+pub static SYNC_LABEL: &str = "volumesyncs.storage.cndev.nl/sync=enabled";
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt::init();
@@ -67,8 +69,8 @@ async fn main() -> Result<(), Error> {
         // converts mpsc into a stream
         let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
-        let label = "volumesyncs.storage.cndev.nl/sync=enabled";
-        utils::start_resource_watcher_label::<PersistentVolume>(client.clone(), tx,label).await?;
+        utils::start_resource_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL)
+            .await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
         // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
@@ -141,8 +143,8 @@ async fn reconcile_protected(
     //let tf = now.format("%Y-%m-%d-%H%M%S");
     let tf = now.timestamp();
 
-    // populate bundle
-    let storage_bundle = storage::populate_storage_bundle(client.clone()).await?;
+    // populate bundle, only add pvs with correct label
+    let storage_bundle = storage::populate_storage_bundle(client.clone(), SYNC_LABEL).await?;
 
     // upload to object storage
     object_storage_logic(pvsync, tf, storage_bundle).await?;

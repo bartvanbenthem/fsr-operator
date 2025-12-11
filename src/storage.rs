@@ -49,22 +49,48 @@ impl StorageObjectBundle {
     }
 }
 
-pub async fn populate_storage_bundle(client: Client) -> Result<StorageObjectBundle, anyhow::Error> {
-    let storage_classes_list = resource::get_resource_list::<StorageClass>(client.clone()).await?;
+pub async fn populate_storage_bundle(
+    client: Client,
+    label: &str, // "key=value"
+) -> Result<StorageObjectBundle, anyhow::Error> {
+    // Parse "key=value"
+    let (label_key, label_value) = match label.split_once('=') {
+        Some((key, value)) => (key, value),
+        None => {
+            return Err(anyhow::anyhow!(
+                "Invalid label format '{}', expected 'key=value'",
+                label
+            ));
+        }
+    };
+
+    let storage_classes_list =
+        resource::get_resource_list::<StorageClass>(client.clone()).await?;
     let persistent_volumes_list =
         resource::get_resource_list::<PersistentVolume>(client.clone()).await?;
     let persistent_volume_claims_list =
         resource::get_resource_list::<PersistentVolumeClaim>(client.clone()).await?;
 
-    let bundle = StorageObjectBundle {
-        // ObjectList<T> has a 'items' field which is Vec<T>
-        storage_classes: storage_classes_list.items,
-        persistent_volumes: persistent_volumes_list.items,
-        persistent_volume_claims: persistent_volume_claims_list.items,
-    };
+    // Filter PVs by parsed key and value
+    let filtered_pvs: Vec<PersistentVolume> = persistent_volumes_list
+        .items
+        .into_iter()
+        .filter(|pv| {
+            pv.metadata
+                .labels
+                .as_ref()
+                .and_then(|labels| labels.get(label_key))
+                == Some(&label_value.to_string())
+        })
+        .collect();
 
-    Ok(bundle)
+    Ok(StorageObjectBundle {
+        storage_classes: storage_classes_list.items,
+        persistent_volumes: filtered_pvs,
+        persistent_volume_claims: persistent_volume_claims_list.items,
+    })
 }
+
 
 pub fn dummy_storage_bundle() -> StorageObjectBundle {
     let mut bundle = StorageObjectBundle::new();
