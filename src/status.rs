@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 /// Generic status patcher for *cluster-scoped* custom resources.
 ///
 /// `K` must be a cluster-scoped CRD type that has a `status` field.
-pub async fn patch_crd_cluster<K, S>(client: Client, name: &str, status: S) -> Result<K, Error>
+pub async fn patch_cr_cluster<K, S>(client: Client, name: &str, status: S) -> Result<K, Error>
 where
     K: Resource + Clone + DeserializeOwned + Serialize + 'static,
     K::DynamicType: Default,
@@ -26,7 +26,7 @@ where
 /// Generic status patcher for *namespace-scoped* custom resources.
 ///
 /// `K` must be a namespace-scoped CRD type that has a `status` field.
-pub async fn patch_crd_namespaced<K, S>(
+pub async fn patch_cr_namespaced<K, S>(
     client: Client,
     namespace: &str,
     name: &str,

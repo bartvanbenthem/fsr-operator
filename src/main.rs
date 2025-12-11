@@ -160,7 +160,7 @@ async fn reconcile_protected(
     };
     //let updated_cr = status::patch(client.clone(), &name, status.clone()).await?;
     let updated_cr: PersistentVolumeSync =
-        status::patch_crd_cluster(client.clone(), &name, status.clone()).await?;
+        status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
     info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
 
     Ok(Action::requeue(Duration::from_secs(32000)))
@@ -185,7 +185,7 @@ fn on_error(cr: Arc<PersistentVolumeSync>, error: &Error, context: Arc<ContextDa
             ..Default::default()
         };
         if let Err(e) =
-            status::patch_crd_cluster::<PersistentVolumeSync, _>(client, &name, status).await
+            status::patch_cr_cluster::<PersistentVolumeSync, _>(client, &name, status).await
         {
             error!("Failed to update status: {:?}", e);
         }
