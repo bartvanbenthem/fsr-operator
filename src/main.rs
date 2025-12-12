@@ -1,3 +1,5 @@
+mod resource;
+
 use pvsync::crd::PersistentVolumeSync;
 use pvsync::crd::PersistentVolumeSyncStatus;
 use pvsync::crd::SyncMode;
@@ -67,7 +69,7 @@ async fn main() -> Result<(), Error> {
         // converts mpsc into a stream
         let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
-        utils::start_resource_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL)
+        resource::start_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL)
             .await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
