@@ -108,6 +108,93 @@ where
     Ok(())
 }
 
+// Generic function to get a specific resource type with specific label and return a list
+#[allow(dead_code)]
+pub async fn get_resource_list_label<T>(
+    client: Client,
+    label_selector: &str,
+) -> Result<ObjectList<T>, anyhow::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Send
+        + Sync
+        + 'static,
+{
+    // Access the Resource <T> API (it's cluster-scoped/all namespaces)
+    let r: Api<T> = Api::all(client);
+
+    // Create ListParams, setting the label_selector
+    let lp = ListParams {
+        label_selector: Some(label_selector.to_string()),
+        ..ListParams::default() // Use the remaining default parameters
+    };
+
+    // List Resource <T> with the specified label selector
+    let r_list = r.list(&lp).await?;
+
+    Ok(r_list)
+}
+
+// Generic function to get a specific resource type and return a list
+#[allow(dead_code)]
+pub async fn get_resource_list<T>(client: Client) -> Result<ObjectList<T>, anyhow::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Send
+        + Sync
+        + 'static,
+{
+    // Access the Resource <T> API (it's cluster-scoped)
+    let r: Api<T> = Api::all(client);
+
+    // List Resource <T>
+    let lp = ListParams::default();
+    let r_list = r.list(&lp).await?;
+
+    Ok(r_list)
+}
+
+// Generic function to fetch and write a list of resources in json format to disk
+#[allow(dead_code)]
+pub async fn fetch_and_write_resources_to_file<T>(
+    client: Client,
+    mount_path: &str,
+    cluster_name: &str,
+    file_name: &str,
+    tf: &i64,
+) -> Result<(), anyhow::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Serialize
+        + Send
+        + Sync
+        + 'static,
+{
+    let file_path = Path::new(mount_path)
+        .join(cluster_name)
+        .join(tf.to_string())
+        .join(file_name);
+
+    let file_str = file_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path"))?;
+
+    let resource_list: ObjectList<T> = get_resource_list(client).await?;
+    utils::write_json_to_file(&resource_list.items, file_str).await
+}
+
 /// Generate `ObjectRef`s for all instances of a given Kubernetes resource type.
 /// https://kube.rs/controllers/relations/#watched-relations
 #[allow(dead_code)]
@@ -166,60 +253,4 @@ where
     T: Metadata + 'static,
 {
     move |_: T| (*refs).clone()
-}
-
-// Generic function to read a specific resource type and return a list
-#[allow(dead_code)]
-pub async fn get_resource_list<T>(client: Client) -> Result<ObjectList<T>, anyhow::Error>
-where
-    T: Clone
-        + Debug
-        + Resource<DynamicType = ()>
-        + Metadata<Ty = ObjectMeta>
-        + DeserializeOwned
-        + Send
-        + Sync
-        + 'static,
-{
-    // Access the Resource <T> API (it's cluster-scoped)
-    let r: Api<T> = Api::all(client);
-
-    // List Resource <T>
-    let lp = ListParams::default();
-    let r_list = r.list(&lp).await?;
-
-    Ok(r_list)
-}
-
-// Generic function to fetch and write a list of resources in json format to disk
-#[allow(dead_code)]
-pub async fn fetch_and_write_resources_to_file<T>(
-    client: Client,
-    mount_path: &str,
-    cluster_name: &str,
-    file_name: &str,
-    tf: &i64,
-) -> Result<(), anyhow::Error>
-where
-    T: Clone
-        + Debug
-        + Resource<DynamicType = ()>
-        + Metadata<Ty = ObjectMeta>
-        + DeserializeOwned
-        + Serialize
-        + Send
-        + Sync
-        + 'static,
-{
-    let file_path = Path::new(mount_path)
-        .join(cluster_name)
-        .join(tf.to_string())
-        .join(file_name);
-
-    let file_str = file_path
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in file path"))?;
-
-    let resource_list: ObjectList<T> = get_resource_list(client).await?;
-    utils::write_json_to_file(&resource_list.items, file_str).await
 }
