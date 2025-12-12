@@ -73,10 +73,7 @@ where
 
 /// watcher for all resources of a certain type
 #[allow(dead_code)]
-pub async fn start_watcher<T>(
-    client: Client,
-    tx: mpsc::Sender<()>,
-) -> Result<(), anyhow::Error>
+pub async fn start_watcher<T>(client: Client, tx: mpsc::Sender<()>) -> Result<(), anyhow::Error>
 where
     T: Clone
         + Debug

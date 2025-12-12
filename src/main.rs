@@ -69,8 +69,7 @@ async fn main() -> Result<(), Error> {
         // converts mpsc into a stream
         let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
-        resource::start_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL)
-            .await?;
+        resource::start_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL).await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
         // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,

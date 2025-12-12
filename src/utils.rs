@@ -6,10 +6,10 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 use tracing::*;
 
+use anyhow::Context;
 use tokio::fs;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReadDirStream;
-use anyhow::Context;
 
 // Generic function to fetch and write a resource in json format to disk
 pub async fn cleanup_resource_logs(
