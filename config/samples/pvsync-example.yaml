@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: persistentvolumesync
     app.kubernetes.io/part-of: volumesync-operator
   annotations:
-    description: "Tracks persistent volumes on protected cluster"
+    description: "Disaster Recovery solution for Persistent Volumes"
 spec:
   protectedCluster: mylocalcluster # name or id of the protected cluster
   mode: Protected # Protected | Recovery

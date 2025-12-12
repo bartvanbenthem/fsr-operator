@@ -5,9 +5,9 @@ It enables disaster-recovery scenarios by exporting PV metadata from a Protected
 ## Features
 - 🔄 Cluster-wide PV discovery (no namespace restrictions)
 - ☁️ Backend-agnostic object storage support (Azure Blob, S3, MinIO, Cloudian)
-- 📤 Export PV definitions from the Protected cluster to object storage
+- 📤 Export storage definitions from the Protected cluster to object storage
 - 📥 Recreate PV objects on the Recovery cluster pointing to the same shared storage
-- 🏷 Cluster identity detection via configurable annotation key
+- 🏷 Cluster identity detection via configurable value
 - 🧹 Automatic retention-based cleanup of historical exports
 - 📡 Event-driven + periodic sync using Kubernetes watches and optional scheduling
 
@@ -88,7 +88,7 @@ metadata:
     app.kubernetes.io/name: persistentvolumesync
     app.kubernetes.io/part-of: volumesync-operator
   annotations:
-    description: "Tracks persistent volumes on protected cluster"
+    description: "Disaster Recovery solution for Persistent Volumes"
 spec:
   protectedCluster: mylocalcluster # name or id of the protected cluster
   mode: Protected # Protected | Recovery
