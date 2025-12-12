@@ -3,7 +3,6 @@ use pvsync::crd::PersistentVolumeSyncStatus;
 use pvsync::crd::SyncMode;
 use pvsync::status;
 use pvsync::storage;
-use pvsync::storage::StorageObjectBundle;
 use pvsync::utils;
 
 use chrono::Utc;
@@ -14,7 +13,6 @@ use kube::ResourceExt;
 use kube::api::ListParams;
 use kube::runtime::watcher::Config;
 use kube::{Api, client::Client, runtime::Controller, runtime::controller::Action};
-use std::env;
 use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::*;
@@ -146,8 +144,8 @@ async fn reconcile_protected(
     // populate bundle, only add pvs with correct label
     let storage_bundle = storage::populate_storage_bundle(client.clone(), SYNC_LABEL).await?;
 
-    // upload to object storage
-    object_storage_logic(pvsync, tf, storage_bundle).await?;
+    // upload the storage objects bundle to the object storage backend
+    storage::write_objects_to_object_store(pvsync, tf, storage_bundle).await?;
 
     // cleanup old log folders based on the given retention in days in the CR spec.
     // TODO()
@@ -221,65 +219,3 @@ pub enum Error {
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-async fn object_storage_logic(
-    cr: &PersistentVolumeSync,
-    timestamp: i64,
-    storage_objects: StorageObjectBundle,
-) -> anyhow::Result<()> {
-    // Load the environment file once at startup (dev only).
-    dotenvy::dotenv().ok();
-
-    // --- Core Logic: Select Provider and Initialize Store ---
-
-    // Determine the cloud provider from the custom resource spec.
-    let provider = &cr.spec.cloud_provider.to_lowercase();
-    // Determine the protected cluster name from the custom resource spec.
-    let cluster = &cr.spec.protected_cluster.to_lowercase();
-    // Define common application parameters.
-    let target_path = format!("{}/{}_test_file.json", &cluster, &timestamp);
-
-    // test data
-    let data = serde_json::to_string_pretty(&storage_objects)?;
-
-    println!("Selected Provider: {}", provider);
-
-    // Initialize the Object Store dynamically.
-    let store = match provider.as_str() {
-        "azure" => {
-            let container_name = env::var("OBJECT_STORAGE_BUCKET")
-                .map_err(|_| anyhow::anyhow!("OBJECT_STORAGE_BUCKET must be set for Azure"))?;
-
-            storage::initialize_azure_store(&container_name)?
-        }
-        "s3" => {
-            // Note: For S3, the bucket name is required. We'll use AWS_BUCKET_NAME convention.
-            let bucket_name = env::var("OBJECT_STORAGE_BUCKET")
-                .map_err(|_| anyhow::anyhow!("OBJECT_STORAGE_BUCKET must be set for S3"))?;
-
-            // Allow an optional custom endpoint for S3-compatible systems (like Cloudian or MinIO)
-            let endpoint = env::var("S3_ENDPOINT_URL").ok();
-
-            storage::initialize_s3_store(&bucket_name, endpoint.as_deref())?
-        }
-        _ => {
-            anyhow::bail!(
-                "Unsupported CLOUD_PROVIDER: {}. Use 'azure' or 's3'.",
-                provider
-            )
-        }
-    };
-
-    // --- Store Operations (Cloud Agnostic) ---
-
-    // 5. Perform the write and verification using the reusable library function.
-    // This call works seamlessly with either the Azure or S3 store.
-    storage::write_data(store, &target_path, &data.as_bytes()).await?;
-
-    println!(
-        "Application completed successfully. Object written to path: {}",
-        target_path
-    );
-
-    Ok(())
-}
