@@ -19,8 +19,12 @@ use object_store::aws::AmazonS3Builder;
 use object_store::azure::MicrosoftAzureBuilder;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
+// Re-aliasing for the Kubernetes ObjectMeta conflict (if still needed)
+use object_store::ObjectMeta as StoreObjectMeta;
 use std::env;
 use std::sync::Arc;
+use chrono::{Duration, Utc};
+use futures::TryStreamExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StorageObjectBundle {
@@ -254,6 +258,90 @@ pub async fn write_data(store: Arc<dyn ObjectStore>, path: &str, data: &[u8]) ->
     //store.delete(&object_key).await
     //    .map_err(|e| anyhow!("Failed to delete object: {}", e))?;
     //info!("Object deleted successfully for cleanup.");
+
+    Ok(())
+}
+
+/// Cleans up log objects in the object store older than the specified retention period.
+///
+/// # Arguments
+/// * `cr` - Reference to the PersistentVolumeSync Custom Resource for configuration.
+/// * `retention_days` - The number of days to retain logs (logs older than this are deleted).
+pub async fn cleanup_old_logs(
+    cr: &PersistentVolumeSync,
+    retention_days: u64,
+) -> anyhow::Result<()> {
+    // 1. Environment Setup (Dev only)
+    dotenvy::dotenv().ok();
+
+    // 2. Configuration Extraction
+    let provider = &cr.spec.cloud_provider.to_lowercase();
+    let cluster = &cr.spec.protected_cluster.to_lowercase();
+
+    // 3. Calculate Cutoff Timestamp
+    // FIX E0425: This entire block must execute and define the variable *before* it's used.
+    let retention_duration = Duration::days(retention_days as i64);
+    let cutoff_time = Utc::now() - retention_duration;
+    let cutoff_timestamp_sec = cutoff_time.timestamp(); // Variable is now in scope
+
+    info!(
+        // Variable is now in scope here:
+        "Cleaning up logs for cluster: {}. Retention: {} days. Cutoff timestamp (seconds): {}",
+        &cluster, retention_days, cutoff_timestamp_sec
+    );
+
+    // 4. Object Store Initialization
+    let store: Arc<dyn ObjectStore> = initialize_object_store(provider.as_str()).await?.into(); 
+    
+    // 5. Define Object Prefix
+    let prefix = Path::from(format!("{}/", &cluster));
+
+    // 6. List, Filter, and Delete Objects
+    
+    // FIX E0277: ObjectStore::list returns the Stream directly, remove '?'
+    let objects_stream = store.list(Some(&prefix)); 
+    
+    let objects_to_delete: Vec<Path> = objects_stream
+        .try_filter_map(|meta: StoreObjectMeta| async move { 
+            
+            // FIX E0599: Use the correct method name `filename()`
+            if let Some(filename) = meta.location.filename() {
+                
+                // filename is likely a &str here, so split() should work
+                if let Some(timestamp_str) = filename.split('_').next() {
+                    
+                    if let Ok(file_timestamp) = timestamp_str.parse::<i64>() {
+                        // FIX E0425: Variable is now in scope here:
+                        if file_timestamp < cutoff_timestamp_sec {
+                            // Object is older than retention, mark for deletion
+                            return Ok(Some(meta.location)); 
+                        }
+                    }
+                }
+            }
+            Ok(None)
+        })
+        .try_collect()
+        .await?;
+
+    if objects_to_delete.is_empty() {
+        info!("No log files found older than {} days for cluster {}.", retention_days, &cluster);
+        return Ok(());
+    }
+
+    info!("Found {} old log files to delete. Initiating sequential deletion.", objects_to_delete.len());
+
+    for path in objects_to_delete.iter() {
+        // Delete is async, so we await each one.
+        store.delete(path).await?;
+    }
+
+    info!(
+        "Successfully deleted {} log files older than {} days for cluster {}.", 
+        objects_to_delete.len(),
+        retention_days,
+        &cluster
+    );
 
     Ok(())
 }
