@@ -149,7 +149,7 @@ async fn reconcile_protected(
     storage::write_objects_to_object_store(pvsync, tf, storage_bundle).await?;
 
     // cleanup old log folders based on the given retention in days in the CR spec.
-    // TODO()
+    storage::cleanup_old_objects(pvsync).await?;
 
     //update status
     let status = PersistentVolumeSyncStatus {

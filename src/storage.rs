@@ -267,9 +267,8 @@ pub async fn write_data(store: Arc<dyn ObjectStore>, path: &str, data: &[u8]) ->
 /// # Arguments
 /// * `cr` - Reference to the PersistentVolumeSync Custom Resource for configuration.
 /// * `retention_days` - The number of days to retain logs (logs older than this are deleted).
-pub async fn cleanup_old_logs(
+pub async fn cleanup_old_objects(
     cr: &PersistentVolumeSync,
-    retention_days: u64,
 ) -> anyhow::Result<()> {
     // 1. Environment Setup (Dev only)
     dotenvy::dotenv().ok();
@@ -277,6 +276,7 @@ pub async fn cleanup_old_logs(
     // 2. Configuration Extraction
     let provider = &cr.spec.cloud_provider.to_lowercase();
     let cluster = &cr.spec.protected_cluster.to_lowercase();
+    let retention_days = cr.spec.retention;
 
     // 3. Calculate Cutoff Timestamp
     // FIX E0425: This entire block must execute and define the variable *before* it's used.
@@ -293,12 +293,12 @@ pub async fn cleanup_old_logs(
     // 4. Object Store Initialization
     let store: Arc<dyn ObjectStore> = initialize_object_store(provider.as_str()).await?.into(); 
     
-    // 5. Define Object Prefix
+    // Define Object Prefix
     let prefix = Path::from(format!("{}/", &cluster));
 
-    // 6. List, Filter, and Delete Objects
+    // List, Filter, and Delete Objects
     
-    // FIX E0277: ObjectStore::list returns the Stream directly, remove '?'
+    // FIX E0277: ObjectStore::list returns the Stream directly
     let objects_stream = store.list(Some(&prefix)); 
     
     let objects_to_delete: Vec<Path> = objects_stream
