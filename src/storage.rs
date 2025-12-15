@@ -19,8 +19,9 @@ use object_store::aws::AmazonS3Builder;
 use object_store::azure::MicrosoftAzureBuilder;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload, Error as ObjectStoreError};
-use chrono::{Duration, Utc};
-use tokio::time::Duration as TokioDuration;
+use chrono::Utc;
+use chrono::Duration as ChronoDuration;
+use std::time::Duration;
 use futures::TryStreamExt;
 use object_store::ObjectMeta as StoreObjectMeta;
 use std::env;
@@ -281,7 +282,7 @@ pub async fn cleanup_old_objects(cr: &PersistentVolumeSync) -> anyhow::Result<()
 
     // 3. Calculate Cutoff Timestamp
     // FIX E0425: This entire block must execute and define the variable *before* it's used.
-    let retention_duration = Duration::days(retention_days as i64);
+    let retention_duration = ChronoDuration::days(retention_days as i64);
     let cutoff_time = Utc::now() - retention_duration;
     let cutoff_timestamp_sec = cutoff_time.timestamp(); // Variable is now in scope
 
@@ -429,7 +430,7 @@ enum PollResult {
 /// Watcher for an object store prefix using listing comparison to detect changes.
 pub async fn start_object_store_watcher(
     cr: &PersistentVolumeSync,
-    polling_interval: TokioDuration,
+    polling_interval: Duration,
     tx: mpsc::Sender<()>,
 ) -> Result<(), anyhow::Error> {
      // 1. Environment Setup
