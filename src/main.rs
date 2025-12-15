@@ -1,6 +1,5 @@
 mod resource;
 
-use kube::Resource;
 use pvsync::crd::PersistentVolumeSync;
 use pvsync::crd::PersistentVolumeSyncStatus;
 use pvsync::crd::SyncMode;
@@ -141,14 +140,6 @@ async fn reconcile_recovery(
 ) -> Result<Action, Error> {
     let _ = cr;
     let _ = context;
-
-    // If the CR has a deletion timestamp, it has been marked for removal.
-    // For a critical, single-instance CR, we should force an exit/failure.
-    let name = cr.name_any();
-    if cr.meta().deletion_timestamp.is_some() {
-        // Return the new fatal error
-        return Err(Error::DeletedCriticalResource(name)); 
-    }
 
     info!("Reconcile Recovery");
 
@@ -296,10 +287,6 @@ pub enum Error {
     },
     */
 
-    /// The critical configuration resource was deleted, requiring operator restart.
-    #[error("Critical configuration resource was deleted: {0}")]
-    DeletedCriticalResource(String),
-
     /// Error in user input or PersistentVolumeSync resource definition, typically missing fields.
     #[error("Invalid PersistentVolumeSync CRD: {0}")]
     UserInputError(String),
@@ -310,16 +297,3 @@ pub enum Error {
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-fn exit_process_on_delete(name: &str) -> Result<Action, Error> {
-    error!("FATAL: The required PersistentVolumeSync CR '{}' was deleted. Exiting to trigger operator restart.", name);
-    
-    // We can't exit the process directly here because the reconciler runs in a thread.
-    // Instead, we return a specific error that the main error handling can catch, 
-    // OR we rely on the controller eventually shutting down after deletion.
-    
-    // **A cleaner method is to use a specific, unrecoverable error.**
-    // Let's modify our Error enum slightly.
-    
-    Err(Error::DeletedCriticalResource(name.to_string()))
-}
