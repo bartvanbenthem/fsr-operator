@@ -104,7 +104,7 @@ async fn main() -> Result<(), Error> {
             .await;
     } else if mode == SyncMode::Recovery {
         // Setup HTTP client for external object store access
-        let polling_interval = tokio::time::Duration::from_secs(10);
+        let polling_interval = tokio::time::Duration::from_secs(30);
         // channel to trigger global reconciles
         let (tx, rx) = mpsc::channel::<()>(16);
         // converts mpsc into a stream
@@ -147,7 +147,7 @@ async fn reconcile_recovery(
     
     info!("Reconcile Recovery");
 
-    Ok(Action::requeue(Duration::from_secs(1000)))
+    Ok(Action::requeue(Duration::from_secs(32000)))
 }
 
 async fn reconcile_protected(
