@@ -344,71 +344,7 @@ pub async fn cleanup_old_objects(cr: &PersistentVolumeSync) -> anyhow::Result<()
     Ok(())
 }
 
-pub fn dummy_storage_bundle() -> StorageObjectBundle {
-    let mut bundle = StorageObjectBundle::new();
-
-    // -------- StorageClass --------
-    let sc = StorageClass {
-        metadata: ObjectMeta {
-            name: Some("fast-storage".into()),
-            ..Default::default()
-        },
-        provisioner: "example.com/dummy".into(),
-        ..Default::default()
-    };
-    bundle.add_storage_class(sc);
-
-    // -------- PersistentVolume --------
-    let pv = PersistentVolume {
-        metadata: ObjectMeta {
-            name: Some("pv-fast-001".into()),
-            ..Default::default()
-        },
-        spec: Some(PersistentVolumeSpec {
-            storage_class_name: Some("fast-storage".into()),
-            capacity: Some(
-                [("storage".into(), Quantity("10Gi".into()))]
-                    .into_iter()
-                    .collect(),
-            ),
-            access_modes: Some(vec!["ReadWriteOnce".into()]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    bundle.add_persistent_volume(pv);
-
-    // -------- PersistentVolumeClaim --------
-    let pvc = PersistentVolumeClaim {
-        metadata: ObjectMeta {
-            name: Some("pvc-fast-claim".into()),
-            namespace: Some("default".into()),
-            ..Default::default()
-        },
-        spec: Some(PersistentVolumeClaimSpec {
-            storage_class_name: Some("fast-storage".into()),
-            access_modes: Some(vec!["ReadWriteOnce".into()]),
-            resources: Some(VolumeResourceRequirements {
-                requests: Some(
-                    [("storage".into(), Quantity("10Gi".into()))]
-                        .into_iter()
-                        .collect(),
-                ),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    bundle.add_persistent_volume_claim(pvc);
-
-    bundle
-}
-
-/////////////////////////////////////////////////
-
 // --- Data Structures ---
-
 // Tracks object paths/metadata to detect changes in the listing of a prefix.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 struct ObjectListing(Vec<String>);
@@ -491,7 +427,6 @@ pub async fn start_object_store_watcher(
 }
 
 // --- Polling Logic ---
-
 /// Fetches the resource listing from the object store prefix.
 async fn poll_object_store_prefix(store: Arc<dyn ObjectStore>, prefix: Path) -> Option<PollResult> {
     // FIX: Assign the stream directly. The compiler has confirmed store.list()
@@ -527,4 +462,66 @@ async fn poll_object_store_prefix(store: Arc<dyn ObjectStore>, prefix: Path) -> 
     Some(PollResult::Changed {
         new_listing: ObjectListing(paths),
     })
+}
+
+// --- Dummy Data for Testing ---
+pub fn dummy_storage_bundle() -> StorageObjectBundle {
+    let mut bundle = StorageObjectBundle::new();
+
+    // -------- StorageClass --------
+    let sc = StorageClass {
+        metadata: ObjectMeta {
+            name: Some("fast-storage".into()),
+            ..Default::default()
+        },
+        provisioner: "example.com/dummy".into(),
+        ..Default::default()
+    };
+    bundle.add_storage_class(sc);
+
+    // -------- PersistentVolume --------
+    let pv = PersistentVolume {
+        metadata: ObjectMeta {
+            name: Some("pv-fast-001".into()),
+            ..Default::default()
+        },
+        spec: Some(PersistentVolumeSpec {
+            storage_class_name: Some("fast-storage".into()),
+            capacity: Some(
+                [("storage".into(), Quantity("10Gi".into()))]
+                    .into_iter()
+                    .collect(),
+            ),
+            access_modes: Some(vec!["ReadWriteOnce".into()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    bundle.add_persistent_volume(pv);
+
+    // -------- PersistentVolumeClaim --------
+    let pvc = PersistentVolumeClaim {
+        metadata: ObjectMeta {
+            name: Some("pvc-fast-claim".into()),
+            namespace: Some("default".into()),
+            ..Default::default()
+        },
+        spec: Some(PersistentVolumeClaimSpec {
+            storage_class_name: Some("fast-storage".into()),
+            access_modes: Some(vec!["ReadWriteOnce".into()]),
+            resources: Some(VolumeResourceRequirements {
+                requests: Some(
+                    [("storage".into(), Quantity("10Gi".into()))]
+                        .into_iter()
+                        .collect(),
+                ),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    bundle.add_persistent_volume_claim(pvc);
+
+    bundle
 }

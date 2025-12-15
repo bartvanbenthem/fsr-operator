@@ -151,10 +151,25 @@ async fn reconcile_recovery(
     cr: Arc<PersistentVolumeSync>,
     context: Arc<ContextData>,
 ) -> Result<Action, Error> {
+    // The `Client` is shared -> a clone from the reference is obtained
+    let client: Client = context.client.clone();
+    // Name of the PersistentVolumeSync resource is used to name the subresources as well.
+    let name = cr.name_any();
+    
     let _ = cr;
     let _ = context;
 
     info!("Reconcile Recovery");
+
+    //update status
+    let status = PersistentVolumeSyncStatus {
+        succeeded: true,
+        ..Default::default()
+    };
+    //let updated_cr = status::patch(client.clone(), &name, status.clone()).await?;
+    let updated_cr: PersistentVolumeSync =
+        status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
+    info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
 
     Ok(Action::requeue(Duration::from_secs(32000)))
 }
