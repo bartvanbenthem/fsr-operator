@@ -1,3 +1,4 @@
+mod extwatcher;
 mod resource;
 
 use pvsync::crd::PersistentVolumeSync;
@@ -19,6 +20,7 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::*;
 
+use reqwest::Client as HTTPClient;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -57,11 +59,22 @@ async fn main() -> Result<(), Error> {
     let crd_api: Api<PersistentVolumeSync> = Api::all(client.clone());
     let cr_list = crd_api.list(&ListParams::default()).await?;
 
-    // Get the selected mode from the Volume Sync CR
-    let mut mode = SyncMode::default();
-    for cr in cr_list {
-        mode = cr.spec.mode;
+    // 1. Check for a single CR
+    if cr_list.items.len() != 1 {
+        // <-- FIX applied here (L63)
+        error!(
+            "Expected exactly one PersistentVolumeSync resource for global mode configuration, found {}. Shutting down.",
+            cr_list.items.len()
+        ); // <-- FIX applied here (L64)
+        // Return an error to stop the application gracefully
+        return Err(Error::UserInputError(format!(
+            "Configuration Error: Expected exactly one PersistentVolumeSync resource, found {}",
+            cr_list.items.len() // <-- FIX applied here (L68, inferred)
+        )));
     }
+
+    let cr_to_watch = cr_list.items.into_iter().next().unwrap();
+    let mode = cr_to_watch.spec.mode;
 
     if mode == SyncMode::Protected {
         // channel to trigger global reconciles
@@ -92,6 +105,25 @@ async fn main() -> Result<(), Error> {
             })
             .await;
     } else if mode == SyncMode::Recovery {
+        let http_client = HTTPClient::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
+
+        let polling_interval = Duration::from_secs(30);
+        let external_endpoint = "https://kmcsacoreo6stwydepx3kc.blob.core.windows.net/test-rs-container?sp=r&st=2025-12-15T09:38:55Z&se=2025-12-15T17:53:55Z&sv=2024-11-04&sr=c&sig=c80qmFJrZ3HOZJqEBtQQyvUokK3w4%2BKR25QsSV%2Frz40%3D".to_string();
+
+        // channel to trigger global reconciles
+        let (tx, rx) = mpsc::channel::<()>(16);
+        // converts mpsc into a stream
+        let signal_stream = ReceiverStream::new(rx);
+        // Start the Persistant Volume watcher in background
+        extwatcher::start_external_watcher_etag(
+            http_client,
+            external_endpoint,
+            polling_interval,
+            tx,
+        )
+        .await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
         // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
@@ -100,6 +132,7 @@ async fn main() -> Result<(), Error> {
         // - `on_error` function to call whenever reconciliation fails.
         Controller::new(crd_api.clone(), Config::default())
             .shutdown_on_signal()
+            .reconcile_all_on(signal_stream)
             .run(reconcile_recovery, on_error, context)
             .for_each(|reconciliation_result| async move {
                 match reconciliation_result {
@@ -208,6 +241,13 @@ pub enum Error {
     WatcherError {
         #[from]
         source: kube_runtime::watcher::Error,
+    },
+
+    /// Error making an HTTP request to the external endpoint.
+    #[error("HTTP request error to external resource: {source}")]
+    ReqwestError {
+        #[from]
+        source: reqwest::Error,
     },
 
     /// Error in user input or PersistentVolumeSync resource definition, typically missing fields.

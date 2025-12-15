@@ -70,17 +70,15 @@ helm install pvsync ./config/operator/chart --create-namespace --namespace pvsyn
 # use label: volumesyncs.storage.cndev.nl/sync: "enabled"
 # to enable a sync on a persistant volume
 kubectl apply -f ./config/samples/pvsync-protected-example.yaml
-kubectl describe persistentvolumesyncs.storage.cndev.nl example-pvsync
+kubectl describe persistentvolumesyncs.storage.cndev.nl example-protected-cluster
 # kubectl delete -f ./config/samples/pvsync-protected-example.yaml
 ```
 
 ## Sample volume sync resource on recovery cluster
 ```bash
-# use label: volumesyncs.storage.cndev.nl/sync: "enabled"
-# to enable a sync on a persistant volume
 kubectl apply -f ./config/samples/pvsync-recovery-example.yaml
-kubectl describe persistentvolumesyncs.storage.cndev.nl example-pvsync
-# kubectl delete -f ./config/samples/pvsync-protected-example.yaml
+kubectl describe persistentvolumesyncs.storage.cndev.nl example-recovery-cluster
+# kubectl delete -f ./config/samples/pvsync-recovery-example.yaml
 ```
 
 ## Test Watchers & Reconciler on Create Persistant Volumes
