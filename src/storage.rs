@@ -19,8 +19,8 @@ use object_store::aws::AmazonS3Builder;
 use object_store::azure::MicrosoftAzureBuilder;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload, Error as ObjectStoreError};
-// Re-aliasing for the Kubernetes ObjectMeta conflict (if still needed)
 use chrono::{Duration, Utc};
+use tokio::time::Duration as TokioDuration;
 use futures::TryStreamExt;
 use object_store::ObjectMeta as StoreObjectMeta;
 use std::env;
@@ -131,7 +131,7 @@ pub async fn write_objects_to_object_store(
     timestamp: i64,
     storage_objects: StorageObjectBundle,
 ) -> anyhow::Result<()> {
-    // 1. Environment Setup (Dev only)
+    // 1. Environment Setup
     dotenvy::dotenv().ok();
 
     // 2. Configuration Extraction
@@ -429,15 +429,18 @@ enum PollResult {
 /// Watcher for an object store prefix using listing comparison to detect changes.
 pub async fn start_object_store_watcher(
     cr: &PersistentVolumeSync,
-    external_prefix: Path,
-    polling_interval: Duration,
+    polling_interval: TokioDuration,
     tx: mpsc::Sender<()>,
 ) -> Result<(), anyhow::Error> {
+     // 1. Environment Setup
+    dotenvy::dotenv().ok();
     // Store the object paths/metadata from the last successful list
     let mut last_state: Option<ObjectListing> = None;
-
-    let provider = cr.spec.cloud_provider.as_str();
-    let raw_store = initialize_object_store(provider).await?;
+    
+    // 1. INITIALIZE THE OBJECT STORE BASED ON THE CR SPECIFICATIONS
+    let external_prefix: Path = cr.spec.protected_cluster.clone().into();
+    let provider: &str = cr.spec.cloud_provider.as_str();
+    let raw_store: Box<dyn ObjectStore> = initialize_object_store(provider).await?;
     
     // 2. WRAP THE STORE IN AN ARC TO ENABLE SHARING AND CLONING (Reference Counting)
     // We assume the type of raw_store is Box<dyn ObjectStore>.
@@ -451,7 +454,7 @@ pub async fn start_object_store_watcher(
     task::spawn(async move {
         loop {
             // Wait for the polling interval
-            sleep(polling_interval.to_std().unwrap_or_default()).await;
+            sleep(polling_interval).await;
 
             debug!(
                 "Polling object store prefix. Last state size: {:?}",

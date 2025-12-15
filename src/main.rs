@@ -72,7 +72,7 @@ async fn main() -> Result<(), Error> {
         )));
     }
 
-    let cr_to_watch = cr_list.items.into_iter().next().unwrap();
+    let cr_to_watch = cr_list.items.clone().into_iter().next().unwrap();
     let mode = cr_to_watch.spec.mode;
 
     if mode == SyncMode::Protected {
@@ -105,13 +105,14 @@ async fn main() -> Result<(), Error> {
             .await;
     } else if mode == SyncMode::Recovery {
         // Setup HTTP client for external object store access
-        //let polling_interval = Duration::from_secs(30);
+        let polling_interval = tokio::time::Duration::from_secs(10);
         // channel to trigger global reconciles
-        //let (tx, rx) = mpsc::channel::<()>(16);
+        let (tx, rx) = mpsc::channel::<()>(16);
         // converts mpsc into a stream
-        //let signal_stream = ReceiverStream::new(rx);
+        let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
-
+        let cr = cr_list.items.clone().into_iter().next().unwrap();
+        storage::start_object_store_watcher(&cr, polling_interval, tx).await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
         // - `kube::Api<T>` this controller "owns". In this case, `T = PersistentVolumeSync`, as this controller owns the `PersistentVolumeSync` resource,
@@ -120,7 +121,7 @@ async fn main() -> Result<(), Error> {
         // - `on_error` function to call whenever reconciliation fails.
         Controller::new(crd_api.clone(), Config::default())
             .shutdown_on_signal()
-            //.reconcile_all_on(signal_stream)
+            .reconcile_all_on(signal_stream)
             .run(reconcile_recovery, on_error, context)
             .for_each(|reconciliation_result| async move {
                 match reconciliation_result {
