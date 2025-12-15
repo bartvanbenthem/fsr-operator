@@ -256,6 +256,33 @@ async fn wait_for_initial_cr(client: Client) -> Result<PersistentVolumeSync, Err
     }
 }
 
+async fn start_cr_cleanup_watcher(client: Client, shutdown_tx: watch::Sender<bool>) {
+    tokio::spawn({
+        let client = client.clone();
+        let shutdown_tx = shutdown_tx.clone();
+
+        async move {
+            let api = Api::<PersistentVolumeSync>::all(client);
+
+            loop {
+                let count = api
+                    .list(&Default::default())
+                    .await
+                    .map(|l| l.items.len())
+                    .unwrap_or(0);
+
+                if count < 1 {
+                    tracing::info!("no CRs left, shutting down");
+                    let _ = shutdown_tx.send(true);
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        }
+    });
+}
+
 fn on_error(cr: Arc<PersistentVolumeSync>, error: &Error, context: Arc<ContextData>) -> Action {
     let client = context.client.clone();
     let name = cr.name_any();
@@ -321,30 +348,3 @@ pub enum Error {
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-async fn start_cr_cleanup_watcher(client: Client, shutdown_tx: watch::Sender<bool>) {
-    tokio::spawn({
-        let client = client.clone();
-        let shutdown_tx = shutdown_tx.clone();
-
-        async move {
-            let api = Api::<PersistentVolumeSync>::all(client);
-
-            loop {
-                let count = api
-                    .list(&Default::default())
-                    .await
-                    .map(|l| l.items.len())
-                    .unwrap_or(0);
-
-                if count < 1 {
-                    tracing::info!("no CRs left, shutting down");
-                    let _ = shutdown_tx.send(true);
-                    break;
-                }
-
-                tokio::time::sleep(Duration::from_secs(30)).await;
-            }
-        }
-    });
-}
