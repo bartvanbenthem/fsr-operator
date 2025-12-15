@@ -93,15 +93,31 @@ kubectl delete -f ./config/samples/test-pv.yaml
 apiVersion: storage.cndev.nl/v1alpha1
 kind: PersistentVolumeSync
 metadata:
-  name: example-pvsync
+  name: example-protected-cluster
   labels:
-    volumesyncs.storage.cndev.nl/name: example-pvsync
-    volumesyncs.storage.cndev.nl/part-of: volumesync-operator
+    volumesyncs.storage.cndev.nl/name: example-protected-cluster
+    volumesyncs.storage.cndev.nl/part-of: pvsync-operator
   annotations:
     description: "Disaster Recovery solution for Persistent Volumes"
 spec:
   protectedCluster: mylocalcluster # name or id of the protected cluster
   mode: Protected # Protected | Recovery
   cloudProvider: azure # azure | s3
-  retention: 14 # retention in days
+  retention: 15 # retention in days
+---
+apiVersion: storage.cndev.nl/v1alpha1
+kind: PersistentVolumeSync
+metadata:
+  name: example-recovery-cluster
+  labels:
+    volumesyncs.storage.cndev.nl/name: example-recovery-cluster
+    volumesyncs.storage.cndev.nl/part-of: pvsync-operator
+  annotations:
+    description: "Disaster Recovery solution for Persistent Volumes"
+spec:
+  protectedCluster: mylocalcluster # name or id of the recovery cluster
+  mode: Recovery # Protected | Recovery
+  cloudProvider: azure # azure | s3
+  retention: 15 # retention in days
+  pollingInterval: 25 # polling interval to object store in seconds
 ```

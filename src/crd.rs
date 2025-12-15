@@ -26,6 +26,9 @@ pub struct PersistentVolumeSyncSpec {
     #[garde(skip)]
     #[serde(rename = "retention")]
     pub retention: u16,
+    #[garde(skip)]
+    #[serde(rename = "pollingInterval")]
+    pub polling_interval: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, JsonSchema, Default)]

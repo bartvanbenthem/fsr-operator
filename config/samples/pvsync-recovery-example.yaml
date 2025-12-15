@@ -12,3 +12,4 @@ spec:
   mode: Recovery # Protected | Recovery
   cloudProvider: azure # azure | s3
   retention: 15 # retention in days
+  pollingInterval: 25 # polling interval to object store in seconds

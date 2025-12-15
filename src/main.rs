@@ -67,7 +67,7 @@ async fn main() -> Result<(), Error> {
         // Return an error to stop the application gracefully
         return Err(Error::UserInputError(format!(
             "Configuration Error: Expected exactly one PersistentVolumeSync resource, found {}",
-            cr_list.items.len() // <-- FIX applied here (L68, inferred)
+            cr_list.items.len()
         )));
     }
 
@@ -103,14 +103,20 @@ async fn main() -> Result<(), Error> {
             })
             .await;
     } else if mode == SyncMode::Recovery {
-        // Setup HTTP client for external object store access
-        let polling_interval = tokio::time::Duration::from_secs(30);
+        // get the single CR
+        let cr = cr_list.items.clone().into_iter().next().unwrap();
+        let polling_interval: Duration;
+        if cr.spec.polling_interval.is_none() {
+            polling_interval = Duration::from_secs(30);
+        }
+        else {
+            polling_interval = Duration::from_secs(cr.spec.polling_interval.unwrap_or_default())
+        }
         // channel to trigger global reconciles
         let (tx, rx) = mpsc::channel::<()>(16);
         // converts mpsc into a stream
         let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
-        let cr = cr_list.items.clone().into_iter().next().unwrap();
         storage::start_object_store_watcher(&cr, polling_interval, tx).await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:

@@ -37,6 +37,8 @@ spec:
                     - Recovery
                 retention:
                   type: integer
+                pollingInterval:
+                  type: integer
             status:
               type: object
               properties:
