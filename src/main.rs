@@ -60,11 +60,10 @@ async fn main() -> Result<(), Error> {
 
     // 1. Check for a single CR
     if cr_list.items.len() != 1 {
-        // <-- FIX applied here (L63)
         error!(
             "Expected exactly one PersistentVolumeSync resource for global mode configuration, found {}. Shutting down.",
             cr_list.items.len()
-        ); // <-- FIX applied here (L64)
+        );
         // Return an error to stop the application gracefully
         return Err(Error::UserInputError(format!(
             "Configuration Error: Expected exactly one PersistentVolumeSync resource, found {}",
@@ -145,7 +144,7 @@ async fn reconcile_recovery(
 ) -> Result<Action, Error> {
     let _ = cr;
     let _ = context;
-
+    
     info!("Reconcile Recovery");
 
     Ok(Action::requeue(Duration::from_secs(1000)))
