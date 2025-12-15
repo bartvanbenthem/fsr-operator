@@ -160,9 +160,10 @@ async fn reconcile_protected(
     cr: Arc<PersistentVolumeSync>,
     context: Arc<ContextData>,
 ) -> Result<Action, Error> {
-    let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
-
-    let name = cr.name_any(); // Name of the PersistentVolumeSync resource is used to name the subresources as well.
+    // The `Client` is shared -> a clone from the reference is obtained
+    let client: Client = context.client.clone();
+    // Name of the PersistentVolumeSync resource is used to name the subresources as well.
+    let name = cr.name_any();
     let pvsync = cr.as_ref();
 
     let now = Utc::now();
@@ -174,7 +175,6 @@ async fn reconcile_protected(
 
     // upload the storage objects bundle to the object storage backend
     storage::write_objects_to_object_store(pvsync, tf, storage_bundle).await?;
-
     // cleanup old log folders based on the given retention in days in the CR spec.
     storage::cleanup_old_objects(pvsync).await?;
 
