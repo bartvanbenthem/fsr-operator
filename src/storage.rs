@@ -135,7 +135,7 @@ pub async fn write_objects_to_object_store(
     // 2. Configuration Extraction
     let provider = &cr.spec.cloud_provider.to_lowercase();
     let cluster = &cr.spec.protected_cluster.to_lowercase();
-    let target_path = format!("{}/{}_test_file.json", &cluster, &timestamp);
+    let target_path = format!("{}/{}_storage_objects.json", &cluster, &timestamp);
 
     // 3. Data Preparation
     let data = serde_json::to_string_pretty(&storage_objects)?;
