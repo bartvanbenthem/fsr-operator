@@ -158,11 +158,11 @@ async fn reconcile_recovery(
     let client: Client = context.client.clone();
     // Name of the PersistentVolumeSync resource is used to name the subresources as well.
     let name = cr.name_any();
-    let _ = context;
 
     info!("Reconcile Recovery");
 
     let pv: PersistentVolume = utils::create_test_pv(&name).await?;
+    //apply pv
     resource::apply_cluster_resource::<PersistentVolume>(client.clone(), &pv, "pvsync-operator")
         .await?;
 
