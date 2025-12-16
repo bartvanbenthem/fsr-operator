@@ -69,11 +69,13 @@ async fn main() -> Result<(), Error> {
         // Shutdown signal channel
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         start_cr_cleanup_watcher(client.clone(), shutdown_tx.clone()).await;
+
         // channel to trigger global reconciles
         let (tx, rx) = mpsc::channel::<()>(16);
         // converts mpsc into a stream
         let signal_stream = ReceiverStream::new(rx);
         // Start the Persistant Volume watcher in background
+        
         resource::start_watcher_label::<PersistentVolume>(client.clone(), tx, SYNC_LABEL).await?;
         // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
         // It requires the following information:
@@ -107,6 +109,7 @@ async fn main() -> Result<(), Error> {
         // get the single CR
         let cr = cr_to_watch.clone();
         let polling_interval: Duration;
+
         if cr.spec.polling_interval.is_none() {
             polling_interval = Duration::from_secs(30);
         } else {
@@ -155,11 +158,18 @@ async fn reconcile_recovery(
     let client: Client = context.client.clone();
     // Name of the PersistentVolumeSync resource is used to name the subresources as well.
     let name = cr.name_any();
-    
-    let _ = cr;
     let _ = context;
 
     info!("Reconcile Recovery");
+
+    let pv: PersistentVolume = utils::create_test_pv(&name).await?;
+    resource::apply_cluster_resource::<PersistentVolume>(client.clone(), &pv, "pvsync-operator")
+        .await?;
+
+    let kpv: Api<PersistentVolume> = Api::all(client.clone());
+    warn!("{:?}", &kpv);
+
+    resource::delete_cluster_resource::<PersistentVolume>(client.clone(), &name).await?;
 
     //update status
     let status = PersistentVolumeSyncStatus {
@@ -275,10 +285,8 @@ async fn start_cr_cleanup_watcher(client: Client, shutdown_tx: watch::Sender<boo
     tokio::spawn({
         let client = client.clone();
         let shutdown_tx = shutdown_tx.clone();
-
         async move {
             let api = Api::<PersistentVolumeSync>::all(client);
-
             loop {
                 let count = api
                     .list(&Default::default())
@@ -291,7 +299,6 @@ async fn start_cr_cleanup_watcher(client: Client, shutdown_tx: watch::Sender<boo
                     let _ = shutdown_tx.send(true);
                     break;
                 }
-
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }
         }

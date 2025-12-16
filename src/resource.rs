@@ -3,6 +3,7 @@ use crate::utils;
 use k8s_openapi::Metadata;
 use k8s_openapi::NamespaceResourceScope;
 use kube::Resource;
+use kube::api::{DeleteParams, Patch, PatchParams};
 use kube::{Api, Client, api::ListParams};
 use kube_runtime::reflector::ObjectRef;
 use serde::Serialize;
@@ -24,6 +25,84 @@ use tokio::sync::mpsc;
 use tokio::task;
 
 use std::sync::Arc;
+
+/// Idempotently creates or updates any cluster-scoped Kubernetes resource using Server-Side Apply (SSA).
+///
+/// This function is generic over any type `T` that represents a cluster-scoped
+/// Kubernetes resource (e.g., PersistentVolume, ClusterRole, CRD).
+///
+/// # Arguments:
+/// - `client`: The Kubernetes client.
+/// - `resource`: The desired state of the resource struct.
+/// - `field_manager`: The unique name of the controller/tool managing this resource.
+pub async fn apply_cluster_resource<T>(
+    client: Client,
+    resource: &T,
+    field_manager: &str,
+) -> Result<T, kube::Error>
+where
+    T: Clone
+        + Debug
+        + Resource<DynamicType = ()>
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Send
+        + Sync
+        + 'static
+        + Default
+        + Serialize,
+{
+    // Use Api::all() for cluster-scoped resources
+    let api: Api<T> = Api::all(client);
+
+    // Resource name must be derived from the resource's metadata
+    let name = resource.metadata().name.as_deref().unwrap_or("[No Name]");
+
+    // Configure the Server-Side Apply parameters
+    let params = PatchParams::apply(field_manager);
+    // Get the resource Kind for logging, using &()
+    let kind = T::kind(&());
+    info!(
+        "Applying cluster-scoped resource {} with name '{}' using SSA...",
+        kind, name
+    );
+
+    // Perform the Server-Side Apply (Patch::Apply)
+    api.patch(name, &params, &Patch::Apply(resource)).await
+}
+
+/// Deletes an existing cluster-scoped Kubernetes resource by name.
+///
+/// This function is generic over any type `T` that represents a cluster-scoped
+/// Kubernetes resource (e.g., PersistentVolume, ClusterRole, CRD).
+///
+/// # Arguments:
+/// - `client`: A Kubernetes client.
+/// - `name`: The name of the resource to delete.
+pub async fn delete_cluster_resource<T>(client: Client, name: &str) -> Result<(), kube::Error>
+where
+    // T needs to be a resource, be debuggable, and allow deserialization (for the delete API response).
+    // The Scope is implicitly ClusterResourceScope because we use Api::all().
+    T: Resource<DynamicType = ()> + Debug + DeserializeOwned + Clone + Send + Sync + 'static,
+{
+    // Use Api::all() for cluster-scoped resources.
+    let api: Api<T> = Api::all(client);
+
+    // Get the resource Kind for logging, using the correct &() instead of &T::default()
+    let kind = T::kind(&());
+
+    info!(
+        "Deleting cluster-scoped resource {} with name '{}'...",
+        kind, name
+    );
+
+    // Perform the deletion
+    // The DeleteParams::default() ensures a standard, graceful deletion.
+    api.delete(name, &DeleteParams::default()).await?;
+
+    // We return Ok(()) regardless of the exact DeleteResponse (Status or T)
+    Ok(())
+}
 
 /// watcher for all resources of a certain type and label combination
 pub async fn start_watcher_label<T>(
