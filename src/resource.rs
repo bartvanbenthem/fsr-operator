@@ -88,9 +88,8 @@ where
     // Use Api::all() for cluster-scoped resources.
     let api: Api<T> = Api::all(client);
 
-    // Get the resource Kind for logging, using the correct &() instead of &T::default()
+    // Get the resource Kind for logging, using &()
     let kind = T::kind(&());
-
     info!(
         "Deleting cluster-scoped resource {} with name '{}'...",
         kind, name
@@ -104,7 +103,99 @@ where
     Ok(())
 }
 
+/// Idempotently creates or updates any namespaced Kubernetes resource using Server-Side Apply (SSA).
+///
+/// This function is generic over any type `T` that represents a namespaced
+/// Kubernetes resource (e.g., Deployment, Service, NetworkPolicy).
+///
+/// # Arguments:
+/// - `client`: The Kubernetes client.
+/// - `namespace`: The target namespace for the resource. (NEW)
+/// - `resource`: The desired state of the resource struct.
+/// - `field_manager`: The unique name of the controller/tool managing this resource.
+#[allow(dead_code)]
+pub async fn apply_namespaced_resource<T>(
+    client: Client,
+    namespace: &str, // <--- NEW ARGUMENT
+    resource: &T,
+    field_manager: &str,
+) -> Result<T, kube::Error>
+where
+    // T must implement the NamespaceResourceScope trait implicitly (via Resource bound)
+    T: Clone
+        + Debug
+        + Resource<DynamicType = (), Scope = NamespaceResourceScope> // <--- SCOPE CHANGE
+        + Metadata<Ty = ObjectMeta>
+        + DeserializeOwned
+        + Serialize
+        + Default // Retaining from your original code, though technically only needed for T::default()
+        + Send
+        + Sync
+        + 'static,
+{
+    // Use Api::namespaced() for namespaced resources
+    let api: Api<T> = Api::namespaced(client, namespace); // <--- API CHANGE
+
+    // Resource name must be derived from the resource's metadata
+    let name = resource.metadata().name.as_deref().unwrap_or("[No Name]");
+    
+    // Configure the Server-Side Apply parameters
+    let params = PatchParams::apply(field_manager);
+    
+    // Get the resource Kind for logging, using &()
+    let kind = T::kind(&());
+    info!(
+        "Applying namespaced resource {}/{} in namespace '{}' using SSA...",
+        kind, name, namespace
+    );
+
+    // Perform the Server-Side Apply (Patch::Apply)
+    api.patch(name, &params, &Patch::Apply(resource)).await
+}
+
+// Deletes an existing namespaced Kubernetes resource by name.
+///
+/// This function is generic over any type `T` that represents a namespaced
+/// Kubernetes resource (e.g., Deployment, Service, NetworkPolicy).
+///
+/// # Arguments:
+/// - `client`: A Kubernetes client.
+/// - `namespace`: The namespace the resource resides in. (NEW)
+/// - `name`: The name of the resource to delete.
+#[allow(dead_code)]
+pub async fn delete_namespaced_resource<T>(
+    client: Client, 
+    namespace: &str, // <--- NEW ARGUMENT
+    name: &str,
+) -> Result<(), kube::Error>
+where
+    // T must implement the NamespaceResourceScope trait implicitly (via Resource bound)
+    T: Resource<DynamicType = (), Scope = NamespaceResourceScope> // <--- SCOPE CHANGE
+        + Debug 
+        + DeserializeOwned 
+        + Clone 
+        + Send 
+        + Sync 
+        + 'static,
+{
+    // Use Api::namespaced() for namespaced resources.
+    let api: Api<T> = Api::namespaced(client, namespace); // <--- API CHANGE
+
+    // Get the resource Kind for logging, using &()
+    let kind = T::kind(&());
+    info!(
+        "Deleting namespaced resource {}/{} in namespace '{}'...",
+        kind, name, namespace
+    );
+
+    // Perform the deletion
+    api.delete(name, &DeleteParams::default()).await?;
+
+    Ok(())
+}
+
 /// watcher for all resources of a certain type and label combination
+#[allow(dead_code)]
 pub async fn start_watcher_label<T>(
     client: Client,
     tx: mpsc::Sender<()>,
