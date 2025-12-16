@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
     let crd_api: Api<PersistentVolumeSync> = Api::all(client.clone());
     // Shared context for the reconciler functions
     let context: Arc<ContextData> = Arc::new(ContextData::new(client.clone()));
-    let mode = cr_to_watch.spec.mode.clone();
+    let mode: SyncMode = cr_to_watch.spec.mode.clone();
 
     if mode == SyncMode::Protected {
         // Shutdown signal channel
