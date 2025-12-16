@@ -58,7 +58,7 @@ async fn main() -> Result<(), Error> {
 
     // This call will pause until the configuration is available or a fatal error occurs.
     // This call will pause the execution of main until the CR is available.
-    let cr_to_watch = wait_for_initial_cr(client.clone()).await?;
+    let cr_to_watch: PersistentVolumeSync = wait_for_initial_cr(client.clone()).await?;
     // Create the Api for the CRD
     let crd_api: Api<PersistentVolumeSync> = Api::all(client.clone());
     // Shared context for the reconciler functions
