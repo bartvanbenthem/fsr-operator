@@ -21,7 +21,6 @@ use tokio::time::Duration;
 use tracing::*;
 
 use tokio::sync::mpsc;
-use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Context injected with each `reconcile` and `on_error` method invocation.
@@ -168,7 +167,7 @@ async fn reconcile_recovery(
 
     let kpv: Api<PersistentVolume> = Api::all(client.clone());
     for pv in kpv.list(&ListParams::default()).await?.items {
-        warn!("Found PV: {}", pv.name_any());
+        info!("Found PV: {}", pv.name_any());
     }
 
     //delete pv
@@ -259,7 +258,7 @@ async fn wait_for_initial_cr(client: Client) -> Result<PersistentVolumeSync, Err
                             "Found {} PersistentVolumeSync resources. Expected exactly one for global configuration. Retrying in 60 seconds...",
                             list.items.len()
                         );
-                        sleep(Duration::from_secs(60)).await;
+                        tokio::time::sleep(Duration::from_secs(60)).await;
                     }
                 }
             }
@@ -268,7 +267,7 @@ async fn wait_for_initial_cr(client: Client) -> Result<PersistentVolumeSync, Err
                 error!(
                     "Custom Resource Definition (CRD) for PersistentVolumeSync not found (404). Retrying in 60 seconds..."
                 );
-                sleep(Duration::from_secs(60)).await;
+                tokio::time::sleep(Duration::from_secs(60)).await;
             }
             Err(e) => {
                 // Other API error (e.g., connection issue, permission denied)
@@ -276,11 +275,11 @@ async fn wait_for_initial_cr(client: Client) -> Result<PersistentVolumeSync, Err
                     "API error while checking for config: {:?}. Retrying in 30 seconds...",
                     e
                 );
-                sleep(Duration::from_secs(30)).await;
+                tokio::time::sleep(Duration::from_secs(30)).await;
             }
         }
         // Short sleep before next polling attempt
-        sleep(Duration::from_secs(10)).await; // Short sleep for the main polling loop
+        tokio::time::sleep(Duration::from_secs(10)).await; // Short sleep for the main polling loop
     }
 }
 
