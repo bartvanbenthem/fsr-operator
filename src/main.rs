@@ -181,7 +181,7 @@ async fn reconcile_recovery(
         status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
     info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
 
-    Ok(Action::requeue(Duration::from_secs(32000)))
+    Ok(Action::requeue(Duration::from_secs(36000)))
 }
 
 async fn reconcile_protected(
@@ -216,7 +216,7 @@ async fn reconcile_protected(
         status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
     info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
 
-    Ok(Action::requeue(Duration::from_secs(32000)))
+    Ok(Action::requeue(Duration::from_secs(36000)))
 }
 
 /// Waits indefinitely for a single PersistentVolumeSync resource to be applied.
