@@ -85,7 +85,7 @@ kubectl describe persistentvolumesyncs.storage.cndev.nl example-recovery-cluster
 ```bash
 kubectl apply -f ./config/samples/test-pv-nolabel.yaml
 kubectl apply -f ./config/samples/test-pv.yaml
-kubectl delete -f ./config/samples/test-pv.yaml
+# kubectl delete -f ./config/samples/test-pv.yaml
 ```
 
 ## CR Spec
