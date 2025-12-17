@@ -93,10 +93,23 @@ pub async fn populate_storage_bundle(
         })
         .collect();
 
+    // Filter PVCs by parsed key and value
+    let filtered_pvcs: Vec<PersistentVolumeClaim> = persistent_volume_claims_list
+        .items
+        .into_iter()
+        .filter(|pvc| {
+            pvc.metadata
+                .labels
+                .as_ref()
+                .and_then(|labels| labels.get(label_key))
+                == Some(&label_value.to_string())
+        })
+        .collect();
+
     Ok(StorageObjectBundle {
         storage_classes: storage_classes_list.items,
         persistent_volumes: filtered_pvs,
-        persistent_volume_claims: persistent_volume_claims_list.items,
+        persistent_volume_claims: filtered_pvcs,
     })
 }
 
