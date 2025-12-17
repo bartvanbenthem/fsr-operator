@@ -153,72 +153,132 @@ async fn reconcile_recovery(
     cr: Arc<PersistentVolumeSync>,
     context: Arc<ContextData>,
 ) -> Result<Action, Error> {
-    // The `Client` is shared -> a clone from the reference is obtained
-    let client: Client = context.client.clone();
-    // Name of the PersistentVolumeSync resource is used to name the subresources as well.
-    let name: String = cr.name_any();
+    let client = context.client.clone();
+    let name = cr.name_any();
 
-    info!("Reconcile Recovery");
+    info!(resource = %name, "Starting cluster-scoped reconciliation");
 
-    let pv: PersistentVolume = utils::create_test_pv(&name).await?;
-    //apply pv
-    resource::apply_cluster_resource::<PersistentVolume>(client.clone(), &pv, "pvsync-operator")
+    // Execute core logic and capture the result in a block
+    // This ensures we can update the status regardless of where it fails.
+    let reconcile_result: Result<(), Error> = async {
+        let pv = utils::create_test_pv(&name).await?;
+
+        // Apply the PV
+        resource::apply_cluster_resource::<PersistentVolume>(
+            client.clone(),
+            &pv,
+            "pvsync-operator",
+        )
         .await?;
 
-    let kpv: Api<PersistentVolume> = Api::all(client.clone());
-    for pv in kpv.list(&ListParams::default()).await?.items {
-        info!("Found PV: {}", pv.name_any());
+        // List PVs (for logging/verification)
+        let kpv: Api<PersistentVolume> = Api::all(client.clone());
+        for p in kpv.list(&ListParams::default()).await?.items {
+            info!(pv_name = %p.name_any(), "Found PV in cluster");
+        }
+
+        // Delete the PV
+        resource::delete_cluster_resource::<PersistentVolume>(client.clone(), &name).await?;
+
+        Ok(())
     }
+    .await;
 
-    //delete pv
-    resource::delete_cluster_resource::<PersistentVolume>(client.clone(), &name).await?;
-
-    //update status
+    // 2. Prepare the status based on the outcome of the logic block
     let status = PersistentVolumeSyncStatus {
-        succeeded: true,
+        succeeded: reconcile_result.is_ok(),
+        // Add more fields here if your CRD supports them (e.g., error messages)
         ..Default::default()
     };
 
-    let updated_cr: PersistentVolumeSync =
-        status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
-    info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
+    // 3. Patch the status subresource (Cluster-scoped only)
+    // We await this so the status is confirmed before the next cycle starts.
+    if let Err(e) = status::patch_cr_cluster::<PersistentVolumeSync, PersistentVolumeSyncStatus>(
+        client.clone(),
+        &name,
+        status,
+        "pvsync-operator",
+    )
+    .await
+    {
+        error!(error = ?e, "Failed to update status subresource");
+    }
 
-    Ok(Action::requeue(Duration::from_secs(36000)))
+    // 4. Return the result
+    match reconcile_result {
+        Ok(_) => {
+            info!(resource = %name, "Reconciliation successful");
+            Ok(Action::requeue(Duration::from_secs(36000))) // Long wait on success
+        }
+        Err(e) => {
+            // Returning an error here triggers the on_error function
+            Err(e)
+        }
+    }
 }
 
 async fn reconcile_protected(
     cr: Arc<PersistentVolumeSync>,
     context: Arc<ContextData>,
 ) -> Result<Action, Error> {
-    // The `Client` is shared -> a clone from the reference is obtained
     let client: Client = context.client.clone();
-    // Name of the PersistentVolumeSync resource is used to name the subresources as well.
     let name = cr.name_any();
     let pvsync = cr.as_ref();
 
-    let now = Utc::now();
-    //let tf = now.format("%Y-%m-%d-%H%M%S");
-    let tf = now.timestamp();
+    info!(resource = %name, "Starting protected reconciliation (Cluster Scoped)");
 
-    // populate bundle, only add pvs with correct label
-    let storage_bundle = storage::populate_storage_bundle(client.clone(), SYNC_LABEL).await?;
+    // 1. Wrap core logic in an async block to capture results
+    let reconcile_result: Result<(), Error> = async {
+        let now = Utc::now();
+        let tf = now.timestamp();
 
-    // upload the storage objects bundle to the object storage backend
-    storage::write_objects_to_object_store(pvsync, tf, storage_bundle).await?;
-    // cleanup old log folders based on the given retention in days in the CR spec.
-    storage::cleanup_old_objects(pvsync).await?;
+        // Populate bundle
+        let storage_bundle = storage::populate_storage_bundle(client.clone(), SYNC_LABEL).await?;
 
-    //update status
+        // Upload to backend
+        storage::write_objects_to_object_store(pvsync, tf, storage_bundle).await?;
+
+        // Cleanup based on retention
+        storage::cleanup_old_objects(pvsync).await?;
+
+        Ok(())
+    }
+    .await;
+
+    // 2. Prepare the status based on whether the block above succeeded or failed
     let status = PersistentVolumeSyncStatus {
-        succeeded: true,
+        succeeded: reconcile_result.is_ok(),
+        // If you add a 'last_observation' or 'message' field to your status struct,
+        // you could populate it here with reconcile_result.err()
         ..Default::default()
     };
-    //let updated_cr = status::patch(client.clone(), &name, status.clone()).await?;
-    let updated_cr: PersistentVolumeSync =
-        status::patch_cr_cluster(client.clone(), &name, status.clone()).await?;
-    info!("{:?}", updated_cr.status.unwrap_or(status.clone()));
 
-    Ok(Action::requeue(Duration::from_secs(36000)))
+    // 3. Patch the status subresource (Cluster-scoped)
+    // We await this so the state is committed before potentially requeuing on error
+    if let Err(e) = status::patch_cr_cluster::<PersistentVolumeSync, PersistentVolumeSyncStatus>(
+        client.clone(),
+        &name,
+        status.clone(),
+        "pvsync-operator",
+    )
+    .await
+    {
+        error!(resource = %name, error = ?e, "Failed to update status subresource");
+    }
+
+    // 4. Final Control Flow
+    match reconcile_result {
+        Ok(_) => {
+            info!(resource = %name, "Protected reconciliation successful");
+            // Requeue in 10 hours for the next scheduled sync
+            Ok(Action::requeue(Duration::from_secs(36000)))
+        }
+        Err(e) => {
+            // Log the specific error before passing it to on_error
+            error!(resource = %name, error = ?e, "Protected reconciliation failed");
+            Err(e)
+        }
+    }
 }
 
 /// Waits indefinitely for a single PersistentVolumeSync resource to be applied.
@@ -309,26 +369,27 @@ async fn start_cr_cleanup_watcher(client: Client, shutdown_tx: watch::Sender<boo
 
 fn on_error(cr: Arc<PersistentVolumeSync>, error: &Error, _context: Arc<ContextData>) -> Action {
     let name = cr.name_any();
-    
+
     // Instead of defaulting to "default", let's reflect the actual scope in logs.
-    let ns_log = cr.namespace().unwrap_or_else(|| "cluster-scoped".to_string());
+    let ns_log = cr
+        .namespace()
+        .unwrap_or_else(|| "cluster-scoped".to_string());
 
     error!(
         error = ?error,
         name = %name,
-        namespace = %ns_log, 
+        namespace = %ns_log,
         "Reconciliation error occurred"
     );
 
     match error {
         // User errors usually require a manual fix; don't hammer the API.
         Error::UserInputError(_) => Action::requeue(Duration::from_secs(60)),
-        
+
         // Transient errors (network, 409 conflicts, etc) get a faster retry.
         _ => Action::requeue(Duration::from_secs(5)),
     }
 }
-
 
 /// All errors possible to occur during reconciliation
 #[derive(Debug, thiserror::Error)]

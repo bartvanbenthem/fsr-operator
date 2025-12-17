@@ -6,7 +6,12 @@ use serde_json::json;
 /// Generic status patcher for *cluster-scoped* custom resources.
 /// Server-Side Apply (SSA), prefered by Kubernetes.
 /// `K` must be a cluster-scoped CRD type that has a `status` field.
-pub async fn patch_cr_cluster<K, S>(client: Client, name: &str, status: S) -> Result<K, Error>
+pub async fn patch_cr_cluster<K, S>(
+    client: Client,
+    name: &str,
+    status: S,
+    field_manager: &str,
+) -> Result<K, Error>
 where
     K: Resource + Clone + DeserializeOwned + Serialize + 'static,
     K::DynamicType: Default,
@@ -24,7 +29,7 @@ where
         "status": status,
     });
     // We apply as a specific manager to own the status fields
-    let params = PatchParams::apply("pvsync-controller").force();
+    let params = PatchParams::apply(field_manager).force();
     // Perform the patch
     api.patch_status(name, &params, &Patch::Apply(&patch)).await
 }
@@ -37,6 +42,7 @@ pub async fn patch_cr_namespaced<K, S>(
     namespace: &str,
     name: &str,
     status: S,
+    field_manager: &str,
 ) -> Result<K, Error>
 where
     K: Resource<Scope = NamespaceResourceScope> + Clone + DeserializeOwned + Serialize + 'static,
@@ -55,7 +61,7 @@ where
         "status": status,
     });
     // We apply as a specific manager to own the status fields
-    let params = PatchParams::apply("pvsync-controller").force();
+    let params = PatchParams::apply(field_manager).force();
     // Perform the patch
     api.patch_status(name, &params, &Patch::Apply(&patch)).await
 }
