@@ -168,10 +168,6 @@ async fn reconcile_recovery(
     // Execute core logic and capture the result in a block
     // This ensures we can update the status regardless of where it fails.
     let reconcile_result: Result<(), Error> = async {
-        let pv = utils::create_test_pv(&name).await?;
-
-        // Apply the PV
-        resource::apply_cluster_resource::<PersistentVolume>(client.clone(), &pv, &name).await?;
 
         let store = objectstorage::initialize_object_store(&cr.spec.cloud_provider).await?;
         let file = objectstorage::get_latest_file_content(store.into(), "mylocalcluster")

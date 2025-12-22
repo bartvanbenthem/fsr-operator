@@ -35,6 +35,7 @@ use std::sync::Arc;
 /// - `client`: The Kubernetes client.
 /// - `resource`: The desired state of the resource struct.
 /// - `field_manager`: The unique name of the controller/tool managing this resource.
+#[allow(dead_code)]
 pub async fn apply_cluster_resource<T>(
     client: Client,
     resource: &T,
