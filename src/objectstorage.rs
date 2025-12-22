@@ -1,5 +1,3 @@
-use crate::crd::PersistentVolumeSync;
-
 use anyhow::{Result, anyhow};
 use tracing::info;
 
@@ -19,7 +17,6 @@ use tokio::{sync::mpsc, task, time::sleep};
 use tracing::debug;
 
 // --- Object Store Builder ---
-
 pub async fn initialize_object_store(provider: &str) -> Result<Box<dyn ObjectStore>> {
     let store = match provider {
         "azure" => {
@@ -111,6 +108,35 @@ pub fn initialize_s3_store(
     Ok(Arc::new(store))
 }
 
+/// Downloads the actual content of the latest file found in the store.
+pub async fn get_latest_file_content(
+    store: Arc<dyn ObjectStore>,
+    prefix: &str,
+) -> Result<Option<Bytes>> {
+    // Get the metadata first (using the function we just wrote)
+    let latest_meta = get_latest_file(store.clone(), prefix).await?;
+
+    if let Some(meta) = latest_meta {
+        info!("Downloading latest file: {}", meta.location);
+
+        // Fetch the actual object from the store
+        let result = store
+            .get(&meta.location)
+            .await
+            .map_err(|e| anyhow!("Failed to get object: {}", e))?;
+
+        // Stream the body into a Bytes buffer
+        let bytes = result
+            .bytes()
+            .await
+            .map_err(|e| anyhow!("Failed to read bytes: {}", e))?;
+
+        Ok(Some(bytes))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Lists files at a prefix and returns the metadata of the most recently modified file.
 pub async fn get_latest_file(
     store: Arc<dyn ObjectStore>,
@@ -156,35 +182,6 @@ pub async fn get_latest_file(
     Ok(latest_object)
 }
 
-/// Downloads the actual content of the latest file found in the store.
-pub async fn get_latest_file_content(
-    store: Arc<dyn ObjectStore>,
-    prefix: &str,
-) -> Result<Option<Bytes>> {
-    // 1. Get the metadata first (using the function we just wrote)
-    let latest_meta = get_latest_file(store.clone(), prefix).await?;
-
-    if let Some(meta) = latest_meta {
-        info!("Downloading latest file: {}", meta.location);
-
-        // 2. Fetch the actual object from the store
-        let result = store
-            .get(&meta.location)
-            .await
-            .map_err(|e| anyhow!("Failed to get object: {}", e))?;
-
-        // 3. Stream the body into a Bytes buffer
-        let bytes = result
-            .bytes()
-            .await
-            .map_err(|e| anyhow!("Failed to read bytes: {}", e))?;
-
-        Ok(Some(bytes))
-    } else {
-        Ok(None)
-    }
-}
-
 // --- Write Function ---
 
 /// Writes a slice of bytes to a specified path in the object store.
@@ -218,11 +215,6 @@ pub async fn write_data(store: Arc<dyn ObjectStore>, path: &str, data: &[u8]) ->
     info!("--- Verification ---");
     info!("Retrieved object size: {} bytes", metadata.size);
 
-    // Cleanup.
-    //store.delete(&object_key).await
-    //    .map_err(|e| anyhow!("Failed to delete object: {}", e))?;
-    //info!("Object deleted successfully for cleanup.");
-
     Ok(())
 }
 
@@ -240,16 +232,16 @@ enum PollResult {
 
 /// Watcher for an object store prefix using listing comparison to detect changes.
 pub async fn start_object_store_watcher(
-    cr: &PersistentVolumeSync,
+    external_prefix: &str,
+    provider: &str,
     polling_interval: Duration,
     tx: mpsc::Sender<()>,
 ) -> Result<(), anyhow::Error> {
     // Store the object paths/metadata from the last successful list
     let mut last_state: Option<ObjectListing> = None;
 
-    // 1. INITIALIZE THE OBJECT STORE BASED ON THE CR SPECIFICATIONS
-    let external_prefix: Path = cr.spec.protected_cluster.clone().into();
-    let provider: &str = cr.spec.cloud_provider.as_str();
+    // INITIALIZE THE OBJECT STORE BASED ON THE SPECIFICATIONS
+    let external_prefix: Path = external_prefix.into();
     let raw_store: Box<dyn ObjectStore> = initialize_object_store(provider).await?;
 
     // OBJECT STORE IN AN ARC TO ENABLE SHARING AND CLONING (Reference Counting)
